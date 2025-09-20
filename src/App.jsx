@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Save, Clock, FolderOpen, Settings2, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus } from "lucide-react";
@@ -185,92 +186,86 @@ function formatFraction(p, q){
   return Q === 1 ? String(P) : `${P}/${Q}`;
 }
 // Parser helpers (accepts fractions, sqrt(), π, etc.)
-const UNDEF_SET = new Set(["undef","undefined","nan","∞","infinity"]);
+const UNDEF_SET = new Set([
+  "undef", "undefined", "dne", "doesnotexist", "noanswer", "novalue",
+  "no value", "n/a", "nan", "∞", "-∞", "infinity", "-infinity", "inf", "-inf"
+]);
+
+function isUndefLike(s) {
+  const n = normalizeString(s);
+  return UNDEF_SET.has(n);
+}
 function normalizeString(s){ return (s??"").toString().trim().toLowerCase().replace(/\s+/g,""); }
-function tryNumeric(value){
-  if (value == null) return null;
-  const raw = value.toString().trim();
-  if (!raw) return null;
 
-  if (UNDEF_SET.has(raw.trim().toLowerCase())) return NaN;
 
-  // fraction a/b (allow spaces)
-  if (/^[+-]?\d+\s*\/\s*[+-]?\d+$/.test(raw.replace(/\s+/g,''))) {
-    const [a, b] = raw.split('/').map(s => Number(s));
-    if (b === 0) return NaN;
-    return a / b;
+function answersMatch(user, correct) {
+  // 0) Special "undefined/no value" handling
+  if (isUndefLike(user) && isUndefLike(correct)) return true;
+
+  // 1) Numeric compare (most robust)
+  const u = tryNumeric(user);
+  const c = tryNumeric(correct);
+  if (u != null && c != null && Number.isFinite(u) && Number.isFinite(c)) {
+    return Math.abs(u - c) < 1e-6;
   }
 
-  // Convert superscripts → **(...)
-  const supToDigits = (s) =>
-    s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, ch => String(DIGITS[SUP_DIGITS.indexOf(ch)]));
-  const supExpander = (base, supSeq) => {
-    const sign = supSeq.includes(SUP_MINUS) ? "-" : "";
-    const digits = supToDigits(supSeq.replaceAll(SUP_MINUS, ""));
-    return `(${base})**(${sign}${digits})`;
-  };
+  // 2) Fallback to normalized expression text compare
+  const norm = (s) => toJSExpr(String(s)).replace(/\s+/g, '').toLowerCase();
+  return norm(user) === norm(correct);
+}
 
-  let s = raw
-    .replace(/−|—/g, '-')      // unicode minus
-    .replace(/×/g, '*')
-    .replace(/·/g, '*')
-    .replace(/÷/g, '/')
-    .replace(/\^/g, '**')
 
-    // √(...), √number, √identifier
-    .replace(/√\s*\(/g, 'Math.sqrt(')
-    .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
+// ---- One true normalizer → JS-safe expression -----------------
+function normalizeToJS(expr) {
+  if (expr == null) return "";
+  let s = String(expr);
 
-    // sqrt( ... ), and sqrt<number> shorthand (e.g., sqrt2 → Math.sqrt(2))
-    .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
-    .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
+  // basic cleanups
+  s = s.replace(/[−—]/g, "-").replace(/\s+/g, "");
+  s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
 
-    // pi / π
-    .replace(/\bpi\b/gi, 'Math.PI')
-    .replace(/π/gi, 'Math.PI')
+  // sqrt forms: √(x), √x, sqrt(x), sqrt2
+  s = s.replace(/√\s*\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/\bsqrt\s*\(([^)]+)\)/gi, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/\bsqrt(\d+(?:\.\d+)?)/gi, (_, num) => `Math.sqrt(${num})`);
 
-    // implicit multiplication fixes in simple cases
-    .replace(/(?<=\d)x(?=\d)/g, '*')
-    .replace(/(\d)(?=x|\()/g, '$1*')
-    .replace(/(x|\))(?=\d|\()/g, '$1*')
-    .replace(/\bmath\./gi, 'Math.');
+  // constants
+  s = s.replace(/\bpi\b/gi, "Math.PI").replace(/π/gi, "Math.PI");
 
-  // General superscripts on numbers/vars/groups
-  s = s.replace(/(\d+(?:\.\d+)?)([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
-    (_, num, sup) => supExpander(num, sup)
-  );
-  s = s.replace(/([A-Za-z_][A-Za-z0-9_]*|[\)\]])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
-    (_, base, sup) => supExpander(base, sup)
-  );
+  // user typed "math." (lowercase) → "Math."
+  s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
 
+  // superscripts
+  s = s.replace(/([A-Za-z0-9_.\)])²/g, "($1)**2");
+  s = s.replace(/([A-Za-z0-9_.\)])³/g, "($1)**3");
+
+  // guard against accidental double prefixes: Math.Math. → Math.
+  s = s.replace(/(?:Math\.){2,}/g, "Math.");
+
+  return s;
+}
+
+// numeric evaluator using the normalizer
+function tryNumeric(value) {
+  if (value == null) return null;
+  const js = normalizeToJS(value);
   try {
-    const fn = new Function(`with (Math) { return (${s}); }`);
-    const out = fn();
-    if (typeof out === 'number' && isFinite(out)) return out;
-  } catch { /* ignore */ }
-
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+    const out = Function(`"use strict"; return (${js})`)();
+    return (typeof out === "number" && isFinite(out)) ? out : null;
+  } catch {
+    return null;
+  }
 }
 
-
-function toJSExpr(expr){
-  return String(expr)
-    .replace(/−|—/g, '-').replace(/\s+/g, '')
-    .replace(/×/g, '*').replace(/÷/g, '/').replace(/\^/g, '**')
-    .replace(/√\s*\(/g, 'Math.sqrt(')
-    .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
-    .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
-    .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
-    .replace(/\bpi\b/gi, 'Math.PI').replace(/π/gi, 'Math.PI')
-    .replace(/\bmath\./gi, 'Math.')
-    .replace(/([A-Za-z0-9_.\)])²/g, '($1)**2')
-    .replace(/([A-Za-z0-9_.\)])³/g, '($1)**3');
+// expose the JS string for debug/functional compare
+function toJSExpr(expr) {
+  return normalizeToJS(expr);
 }
 
-function evalExprAtX(expr, x){
-  const s = toJSExpr(expr);
-  const fn = new Function('x', `with (Math) { return (${s}); }`);
+function evalExprAtX(expr, x) {
+  const js = normalizeToJS(expr);
+  const fn = new Function("x", `with (Math) { return (${js}); }`);
   return fn(x);
 }
 
@@ -1245,15 +1240,17 @@ function BuilderView({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const [topicQuery, setTopicQuery] = useState("");
+  const [triedStart, setTriedStart] = useState(false);
   const [showStartWarning, setShowStartWarning] = useState(false);
 
-  const startBlockReason = !folderTopics.length
-  ? "Add at least one topic"
+const startBlockReason = !folderTopics.length
+  ? (triedStart ? "Add at least one topic" : "")
   : hasOnlyFlash
   ? "Add another topic (Flash Timer can’t be the only one)"
   : (folderTopics.includes("flash_timer") && !flashSeconds)
   ? "Set Flash Timer seconds"
   : "";
+
   const [durationStr, setDurationStr] = useState(String(durationMin));
 
   useEffect(() => {
@@ -1295,6 +1292,8 @@ function BuilderView({
                 className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 outline-none focus:border-white/10 focus:ring-2 focus:ring-emerald-400/40 placeholder:text-white/40"
               />
             </div>
+
+          {/* Saved Sessions (now part of the Topics panel) */}
 
 
             {/* Scrollable content area */}
@@ -1350,11 +1349,42 @@ function BuilderView({
                 );
               })}
             </div>
-          </motion.div>
+                        <div className="mt-4">
+              <div className="text-xs uppercase tracking-wider text-white/50 mb-2">
+                Saved Sessions
+              </div>
 
+              {sessions.length === 0 ? (
+                <div className="text-white/50 text-sm">No saved sessions yet.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {sessions.map((s, i) => (
+                    <div key={i} className={`${cardBase} p-4`}>
+                      <div className="font-semibold truncate">{s.name}</div>
+                      <div className="text-xs text-white/50 mt-1 line-clamp-2">
+                        {s.topics.map(id => topicMap.get(id)?.label || id).join(", ")}
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <button onClick={() => {setTriedStart(true); loadSession(s)}} className={btnGhost}>Load</button>
+                        <button
+                          onClick={() => {
+                            const copy = [...sessions];
+                            copy.splice(i, 1);
+                            setSessions(copy);
+                          }}
+                          className={btnGhost}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
 
-        {/* Right: Session Folder at TOP, then Saved + Leaderboard */}
         <div className="space-y-2">
           {/* Session Folder (moved here) */}
           <div className="lg:sticky lg:top-20">
@@ -1391,7 +1421,7 @@ function BuilderView({
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 text-sm">
+                <label className="flex items-center gap-2 bg-whiteborder border-white/10 rounded-2xl px-3 py-2 text-sm">
                   <Clock size={16} className="text-white/60"/>
                   <input
                     type="text"
@@ -1455,37 +1485,6 @@ function BuilderView({
           {/* ⬇️ Presets section removed entirely */}
 
           {/* Saved Sessions */}
-          <motion.div layout className={`${panel} relative overflow-visible`}>
-            <PanelGloss />
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-tight">Your Saved Sessions</h2>
-            </div>
-            {sessions.length===0 ? (
-              <div className="text-white/50 text-sm">No saved sessions yet.</div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {sessions.map((s, i) => (
-                  <div key={i} className={`${cardBase} p-4`}>
-                    <div className="font-semibold">{s.name}</div>
-                    <div className="text-xs text-white/50 mt-1">
-                      {s.topics.map(id=>topicMap.get(id)?.label || id).join(", ")}
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <button onClick={()=>loadSession(s)} className={btnGhost}>Load</button>
-                      <button
-                        onClick={()=>{
-                          const copy=[...sessions]; copy.splice(i,1); setSessions(copy);
-                        }}
-                        className={btnGhost}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
 
           {/* Leaderboard */}
           <LeaderboardPanel
@@ -1730,9 +1729,21 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
 
   function doCheck(){
     if (!current || state === "finished") return;
+    console.log("🔎 Checking answer:", {
+      userRaw: answer,
+      userJS: toJSExpr(answer),
+      userNumeric: tryNumeric(answer),
+      expectedRaw: current?.answer,
+      expectedJS: toJSExpr(current?.answer ?? ''),
+      expectedNumeric: tryNumeric(current?.answer),
+      topic: current?.id,
+      prompt: current?.prompt
+    });
+
+
     const ok = typeof current?.checker === "function"
       ? current.checker(answer)
-      : equalish(answer, current.answer);
+      : answersMatch(answer, current.answer);
 
     setAttempts(a=>a+1);
     if (ok){
@@ -1808,35 +1819,32 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                 )}
               </AnimatePresence>
 
-
-
               <form onSubmit={submit} className="mt-4 flex items-center justify-center gap-2">
                 <input
                   ref={inputRef}
                   value={answer}
                   onChange={(e) => setAnswer(beautifyInline(e.target.value))}
                   placeholder="Type answer and hit Enter"
-                  className={`w-full max-w-md px-4 py-3 rounded-2xl bg-white/5 border outline-none text-lg ${
-                    state === "wrong"
+                  className={`w-full max-w-md px-4 py-3 rounded-2xl bg-white/5 border outline-none text-lg ${state === "wrong"
                       ? "border-red-500/50 focus:border-red-400/60"
                       : "border-white/10 focus:border-emerald-400/50"
-                  }`}
+                    }`}
                 />
 
+                {/* Single submit button: shows Go initially, Check when wrong */}
                 <button className={btnPrimary} type="submit">
-                  <Play size={16} />Go
+                  {state === "wrong" ? <Check size={16} /> : <Play size={16} />}
+                  {state === "wrong" ? "Check" : "Go"}
                 </button>
-                {state === "wrong" && (
-                  <button type="button" onClick={doCheck} className={btnGhost}>
-                    <Check size={16} />Check
-                  </button>
-                )}
+
+                {/* Keep Reveal button (optional) */}
                 {hidden && (
                   <button type="button" onClick={revealAnswer} className={btnGhost}>
                     <Eye size={16} />Reveal answer
                   </button>
                 )}
               </form>
+
 
 {/* Live MathJax preview under the input */}
               {/* Symbols toolbar */}
@@ -1874,111 +1882,236 @@ function SessionSummary({ onExit }){
     </div>
   );
 }
-function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
-  const grouped = React.useMemo(() => {
-    const g = {};
-    for (const e of board) {
-      const bucket = e.bucket || "MIXED";
-      if (!g[bucket]) g[bucket] = [];
-      g[bucket].push(e);
+// ---- stats.js (or near your LeaderboardPanel) ----
+function buildTopicStats(board) {
+  // per topic arrays
+  const byTopic = new Map(); // topic -> entries[]
+  for (const e of board) {
+    for (const t of (e.topics || [])) {
+      if (!byTopic.has(t)) byTopic.set(t, []);
+      byTopic.get(t).push(e);
     }
-    // Sort each bucket by score desc
-    Object.values(g).forEach(list => list.sort((a,b) => b.score - a.score));
-    return g;
-  }, [board]);
+  }
 
-  const bucketsOrdered = React.useMemo(() => {
-    const all = Object.keys(grouped);
-    return ["MIXED", ...all
-      .filter(k => k !== "MIXED")
-      .sort((a,b) => (topicMap.get(a)?.label || a).localeCompare(topicMap.get(b)?.label || b))]
-      .filter((v, i, arr) => arr.indexOf(v) === i && grouped[v]);
-  }, [grouped, topicMap]);
+  const baselines = new Map(); // topic -> {avgAcc, avgSec, avgScore, attempts}
+  for (const [topic, list] of byTopic) {
+    const n = list.length || 1;
+    const acc = list.reduce((s, e) => s + (e.accuracy ?? 0), 0) / n;
+    const sec = list.reduce((s, e) => s + (e.avgSecPerQ ?? 0), 0) / n;
+    const scr = list.reduce((s, e) => s + (e.score ?? 0), 0) / n;
+    const attempts = list.reduce((s, e) => s + (e.attempts ?? 0), 0);
+    baselines.set(topic, { avgAcc: acc, avgSec: sec, avgScore: scr, attempts, sessions: n });
+  }
 
-  // which buckets are expanded
-  const [expanded, setExpanded] = useState({});
-  const toggle = (k) => setExpanded(prev => ({ ...prev, [k]: !prev[k] }));
+  // per-topic personal best
+  const bestByTopic = new Map(); // topic -> entry
+  for (const [topic, list] of byTopic) {
+    bestByTopic.set(topic, list.slice().sort((a,b)=>b.score-a.score)[0] ?? null);
+  }
+
+  return { byTopic, baselines, bestByTopic };
+}
+
+function computeRelative(topic, entry, baseline, weights = { wAcc: 1, wSpeed: 0.7 }) {
+  if (!baseline) return 0;
+  const accDelta = (entry.accuracy ?? 0) - baseline.avgAcc;
+  const secDelta = (entry.avgSecPerQ ?? 0) - (baseline.avgSec || 1e-9); // + = slower
+  const speedTerm = -secDelta / Math.max(baseline.avgSec || 1, 1e-9);
+  return weights.wAcc * accDelta + weights.wSpeed * speedTerm;
+}
+
+function summarizeTopics(board) {
+  const { byTopic, baselines } = buildTopicStats(board);
+  const topics = [];
+  for (const [topic, list] of byTopic) {
+    const base = baselines.get(topic);
+    // average relative over entries (with min attempts threshold)
+    const rels = list.map(e => computeRelative(topic, e, base));
+    const relAvg = rels.reduce((s,x)=>s+x,0)/(rels.length||1);
+    const totalAttempts = list.reduce((s,e)=>s+(e.attempts||0),0);
+    topics.push({
+      topic,
+      attempts: totalAttempts,
+      sessions: list.length,
+      avgScore: base.avgScore,
+      avgAcc: base.avgAcc,
+      avgSec: base.avgSec,
+      weakIndex: relAvg, // lower = weaker
+      entries: list
+    });
+  }
+  return topics;
+}
+
+
+function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
+  const [tab, setTab] = useState("overview"); // "overview" | "topics" | "sessions"
+  const [topicFilter, setTopicFilter] = useState("ALL");
+  const [range, setRange] = useState("ALL"); // "7D" | "30D" | "ALL"
+
+  const filteredBoard = useMemo(() => {
+    // apply time range here if desired
+    return board;
+  }, [board, range]);
+
+  const topicSummaries = useMemo(() => summarizeTopics(filteredBoard), [filteredBoard]);
 
   return (
     <motion.div layout className={`${panel} relative overflow-visible`}>
       <PanelGloss />
+      {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-          <Trophy size={18}/> Leaderboard
+          <Trophy size={18}/> Performance
         </h2>
         <div className="flex items-center gap-2">
-          <button
-            className={btnGhost}
-            onClick={()=>{ if (confirm("Clear leaderboard?")) setBoard([]); }}
-          >
-            Clear
-          </button>
+          <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
         </div>
       </div>
 
-      {bucketsOrdered.length===0 && (
-        <div className="text-white/50 text-sm">No entries yet — run a session to populate.</div>
-      )}
-
-      <div className="space-y-4">
-        {bucketsOrdered.map(bucket => {
-          const list = grouped[bucket] || [];
-          const isExpanded = !!expanded[bucket];
-          const highlightIndex = list.findIndex(e => e.id === highlightId); // 0-based
-          const highlightRank = highlightIndex >= 0 ? highlightIndex + 1 : null;
-          const show = isExpanded ? list : list.slice(0, 4);
-          const showAllNeeded = list.length > 4;
-          const highlightBelowTop4 = highlightRank && highlightRank > 4 && !isExpanded;
-
-          return (
-            <div key={bucket} className="border-t border-white/5 pt-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-xs uppercase tracking-wider text-white/50">
-                  {bucket === "MIXED" ? "Mixed Sessions" : (topicMap.get(bucket)?.label || bucket)}
-                </div>
-
-                {showAllNeeded && (
-                  <button
-                    onClick={() => toggle(bucket)}
-                    className={`${btnGhost} px-3 py-1 text-xs ${
-                      highlightBelowTop4 ? "ring-2 ring-emerald-400/60 animate-pulse" : ""
-                    }`}
-                    title={highlightBelowTop4 ? "Your latest score is below the top 4 — expand to see it" : ""}
-                  >
-                    {isExpanded ? "Show less" : `Show all (${list.length})`}
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {show.map((e, i) => {
-                  const rank = (grouped[bucket] || []).indexOf(e) + 1; // true rank in full list
-                  const isHighlighted = e.id === highlightId;
-                  return (
-                    <LeaderboardRow
-                      key={e.id}
-                      rank={rank}
-                      entry={e}
-                      topicMap={topicMap}
-                      highlight={isHighlighted}
-                    />
-                  );
-                })}
-
-                {/* If not expanded and the highlighted item is below top 4, hint at it */}
-                {!isExpanded && highlightBelowTop4 && (
-                  <div className="col-span-full text-xs text-white/50">
-                    Your latest attempt is ranked #{highlightRank}. Tap “Show all” to view it.
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4">
+        {["overview","topics","sessions"].map(k => (
+          <button key={k}
+            className={`${btnGhost} ${tab===k?"ring-2 ring-emerald-400/60":""}`}
+            onClick={()=>setTab(k)}>
+            {k[0].toUpperCase()+k.slice(1)}
+          </button>
+        ))}
       </div>
+
+      {tab === "overview" && <OverviewTab board={filteredBoard} topicSummaries={topicSummaries} topicMap={topicMap} />}
+      {tab === "topics"   && <TopicsTab topicSummaries={topicSummaries} topicMap={topicMap} />}
+      {tab === "sessions" && <SessionsTab board={filteredBoard} topicMap={topicMap} highlightId={highlightId} />}
     </motion.div>
   );
 }
+function OverviewTab({ board, topicSummaries, topicMap }) {
+  const n = board.length;
+  const avgScore = Math.round(board.reduce((s,e)=>s+(e.score||0),0)/(n||1));
+  const avgAcc   = board.reduce((s,e)=>s+(e.accuracy||0),0)/(n||1);
+  const avgSec   = Math.round(10*board.reduce((s,e)=>s+(e.avgSecPerQ||0),0)/(n||1))/10;
+
+  const withAttempts = topicSummaries.filter(t=>t.attempts>=10); // threshold
+  const weakest = [...withAttempts].sort((a,b)=>a.weakIndex-b.weakIndex).slice(0,3);
+  const strongest = [...withAttempts].sort((a,b)=>b.weakIndex-a.weakIndex).slice(0,3);
+
+  return (
+    <div className="space-y-4">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <KPI label="Sessions" value={n} />
+        <KPI label="Avg score" value={avgScore} />
+        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
+        <KPI label="Avg sec / Q" value={avgSec} />
+      </div>
+
+      {/* Weakest / Strongest */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TopicList title="Weakest topics" items={weakest} topicMap={topicMap} tone="weak" />
+        <TopicList title="Strongest topics" items={strongest} topicMap={topicMap} tone="strong" />
+      </div>
+    </div>
+  );
+}
+function TopicsTab({ topicSummaries, topicMap }) {
+  const [sort, setSort] = useState("weak"); // weak | strong | practiced | recent
+  const sorted = useMemo(() => {
+    const arr = [...topicSummaries];
+    if (sort==="weak") arr.sort((a,b)=>a.weakIndex-b.weakIndex);
+    if (sort==="strong") arr.sort((a,b)=>b.weakIndex-a.weakIndex);
+    if (sort==="practiced") arr.sort((a,b)=>b.attempts-a.attempts);
+    if (sort==="recent") arr.sort((a,b)=> (new Date(b.entries[0]?.when||0)) - (new Date(a.entries[0]?.when||0)));
+    return arr;
+  }, [topicSummaries, sort]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        {["weak","strong","practiced","recent"].map(k => (
+          <button key={k} className={`${btnGhost} ${sort===k?"ring-2 ring-emerald-400/60":""}`} onClick={()=>setSort(k)}>
+            {k[0].toUpperCase()+k.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {sorted.map(t => <TopicCard key={t.topic} t={t} label={topicMap.get(t.topic)?.label || t.topic} />)}
+    </div>
+  );
+}
+
+function TopicCard({ t, label }) {
+  const [open, setOpen] = useState(false);
+  const top = t.entries.slice().sort((a,b)=>b.score-a.score).slice(0, open ? 20 : 4);
+  return (
+    <div className={`${cardBase} p-3`}>
+      <div className="flex items-center justify-between">
+        <div className="font-semibold truncate">{label}</div>
+        <div className="text-xs text-white/50">
+          Attempts {t.attempts} · Acc {Math.round(t.avgAcc*100)}% · {t.avgSec}s/q · Rel {(t.weakIndex>=0?"+":"") + t.weakIndex.toFixed(2)}
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {top.map(e => <SmallSession key={e.id} e={e} />)}
+      </div>
+      {t.entries.length>4 && (
+        <div className="mt-2">
+          <button className={btnGhost} onClick={()=>setOpen(!open)}>{open?"Show less":"Show all"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+function SessionsTab({ board, topicMap, highlightId }) {
+  const [count, setCount] = useState(20);
+  const show = board.slice(0, count);
+  return (
+    <div className="space-y-2">
+      {show.length===0 && <div className="text-white/50 text-sm">No entries yet.</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {show.map(e => <LeaderboardRow key={e.id} rank={"—"} entry={e} topicMap={topicMap} highlight={e.id===highlightId} />)}
+      </div>
+      {count < board.length && (
+        <div className="mt-2">
+          <button className={btnGhost} onClick={()=>setCount(c=>c+20)}>Load more</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SmallSession({ e }) {
+  return (
+    <div className={`${cardBase} p-2 text-xs flex items-center justify-between`}>
+      <div>{e.score}</div>
+      <div className="text-white/50">{(new Date(e.when)).toLocaleDateString()}</div>
+    </div>
+  );
+}
+
+function KPI({label, value}) {
+  return <div className={`${cardBase} p-3 text-center`}><div className="text-xs text-white/50">{label}</div><div className="text-xl font-semibold">{value}</div></div>;
+}
+
+function TopicList({ title, items, topicMap, tone }) {
+  return (
+    <div className={`${cardBase} p-3`}>
+      <div className="text-sm text-white/60 mb-2">{title}</div>
+      <div className="space-y-2">
+        {items.length===0 && <div className="text-white/40 text-sm">Not enough data yet.</div>}
+        {items.map(t => (
+          <div key={t.topic} className="flex items-center justify-between">
+            <div className="truncate">{topicMap.get(t.topic)?.label || t.topic}</div>
+            <div className={`text-xs ${tone==="weak"?"text-red-300":"text-emerald-300"}`}>
+              {tone==="weak" ? "↓" : "↑"} {(t.weakIndex>=0?"+":"") + t.weakIndex.toFixed(2)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
   const badge = rank===1
@@ -2031,23 +2164,77 @@ function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
   );
 }
 
-// ---------- DEV tiny tests ----------
-(function __devSelfTests(){
-  const approx = (a,b)=> Math.abs(a-b) < 1e-9;
-  const num = (v)=>{ 
-    try { 
-      const src = String(v)
-        .replace(/×/g,'*').replace(/÷/g,'/').replace(/\^/g,'**')
-        .replace(/√\s*\(/g, 'Math.sqrt(')
-        .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
-        .replace(/\bsqrt\s*\(/gi,'Math.sqrt(')
-        .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
-        .replace(/pi|π/gi,'Math.PI');
-      return Function(`with (Math) { return (${src}) }`)(); 
-    } catch { return null; } 
-  };
-  console.assert(approx(num('Math.sqrt(2)/2'), Math.SQRT2/2), 'sqrt(2)/2');
-  console.assert(approx(num('1/√2'), Math.SQRT2/2), '1/√2');
-  console.assert(approx(num('sqrt2'), Math.SQRT2), 'sqrt2');
-})();
 
+// ---------- DEV tiny tests ----------
+if (typeof window !== "undefined") {
+  window.debugAnswersMatch = (user, correct) => {
+    const u = tryNumeric(user);
+    const c = tryNumeric(correct);
+    console.groupCollapsed("%cdebugAnswersMatch", "color:#10b981;font-weight:bold", { user, correct });
+    console.log("user raw:", user);
+    console.log("correct raw:", correct);
+    console.log("user numeric:", u, "correct numeric:", c, "diff:", (u!=null&&c!=null)?Math.abs(u-c):null);
+    console.log("equal (numeric <1e-6):", (u!=null&&c!=null) && Math.abs(u-c)<1e-6);
+    console.log("fallback string eq:", (String(user).trim().toLowerCase().replace(/\s+/g,"") === String(correct).trim().toLowerCase().replace(/\s+/g,"")));
+    console.groupEnd();
+    return (function answersMatchForDebug(user, correct) {
+      const u2 = tryNumeric(user);
+      const c2 = tryNumeric(correct);
+      if (u2 != null && c2 != null && isFinite(u2) && isFinite(c2)) {
+        return Math.abs(u2 - c2) < 1e-6;
+      }
+      const norm = s => String(s).trim().toLowerCase().replace(/\s+/g, "");
+      return norm(user) === norm(correct);
+    })(user, correct);
+  };
+}
+
+// Dev self-tests
+(function __devSelfTests(){
+  const ok = (cond, label) => {
+    if (!cond) {
+      // eslint-disable-next-line no-console
+      console.error("❌ Test failed:", label);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log("✅", label);
+    }
+  };
+
+  const approx = (a,b)=> Math.abs(a-b) < 1e-9;
+
+  // Low-level numeric parsing checks
+  ok(approx(tryNumeric("Math.sqrt(2)/2"), Math.SQRT2/2), "num: Math.sqrt(2)/2");
+  ok(approx(tryNumeric("1/√2"),          Math.SQRT2/2), "num: 1/√2");
+  ok(approx(tryNumeric("sqrt2"),         Math.SQRT2),   "num: sqrt2");
+  ok(approx(tryNumeric("\\sqrt{3}"),     Math.sqrt(3)), "num: \\sqrt{3}");
+  ok(approx(tryNumeric("\\√{3}"),        Math.sqrt(3)), "num: \\√{3}");
+  ok(approx(tryNumeric("\\√3"),          Math.sqrt(3)), "num: \\√3");
+  ok(approx(tryNumeric("√(3)"),          Math.sqrt(3)), "num: √(3)");
+  ok(approx(tryNumeric("pi/3"),          Math.PI/3),    "num: pi/3");
+  ok(approx(tryNumeric("π/3"),           Math.PI/3),    "num: π/3");
+  ok(approx(tryNumeric("\\frac{1}{2}"),  0.5),          "num: \\frac{1}{2}");
+
+  // High-level answer equivalence checks (the thing used by the app)
+  const expect = (user, correct, label) => ok(window.debugAnswersMatch(user, correct), label);
+
+  // tan(π/3) correct is "sqrt(3)"
+  [
+    "√3",
+    "\\√3",
+    "sqrt(3)",
+    "\\sqrt{3}",
+    "1.7320508075688772",
+    "(√3)",
+    " (  sqrt { 3 } ) "
+  ].forEach(u => expect(u, "sqrt(3)", `answersMatch: ${JSON.stringify(u)} == sqrt(3)`));
+
+  // cos(π/4) == sqrt(2)/2
+  [
+    "√2/2",
+    "1/√2",
+    "\\frac{\\sqrt{2}}{2}",
+    "\\frac{1}{\\sqrt{2}}",
+    "sqrt(2)/2",
+  ].forEach(u => expect(u, "sqrt(2)/2", `answersMatch: ${JSON.stringify(u)} == sqrt(2)/2`));
+})();
