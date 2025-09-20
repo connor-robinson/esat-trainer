@@ -100,7 +100,7 @@ const CATEGORIES = {
     { id: "square_pyramid_sa", label: "Square Pyramid Surface Area" },
   ],
   TRIGONOMETRY: [
-    { id: "trig_recall", label: "Trig Recall" },
+    { id: "trig_recall", label: "Trig Recall  " },
     { id: "trig_eval", label: "Evaluate Trig" },
     { id: "tri_special", label: "Special Triangles" },
   ],
@@ -2014,64 +2014,243 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
     </div>
   );
 }
+
+/* ===================== Topics Tab (bar leaderboard w/ medals) ===================== */
+function MedalBadge({ rank }) {
+  // Gold, Silver, Bronze with subtle conic shine
+  const palettes = {
+    1: {
+      ring: "ring-yellow-300/70",
+      style: {
+        backgroundImage:
+          "conic-gradient(from 210deg at 50% 50%, #FDE68A, #FCD34D, #FBBF24, #FDE68A)",
+      },
+      fg: "text-black/80",
+    },
+    2: {
+      ring: "ring-slate-300/70",
+      style: {
+        backgroundImage:
+          "conic-gradient(from 210deg at 50% 50%, #E5E7EB, #D1D5DB, #9CA3AF, #E5E7EB)",
+      },
+      fg: "text-black/80",
+    },
+    3: {
+      ring: "ring-amber-300/70",
+      style: {
+        backgroundImage:
+          "conic-gradient(from 210deg at 50% 50%, #FBBF24, #F59E0B, #D97706, #FBBF24)",
+      },
+      fg: "text-black/80",
+    },
+    default: {
+      ring: "ring-emerald-300/60",
+      style: {
+        backgroundImage:
+          "conic-gradient(from 210deg at 50% 50%, #34D399, #10B981, #06B6D4, #34D399)",
+      },
+      fg: "text-black/80",
+    },
+  };
+  const p = palettes[rank] || palettes.default;
+
+  return (
+    <div
+      className={`relative h-7 w-7 rounded-xl ring-2 ${p.ring} shadow-[0_4px_18px_-6px_rgba(0,0,0,0.6)] flex items-center justify-center ${p.fg}`}
+      style={p.style}
+      aria-label={`Rank ${rank}`}
+      title={`Rank ${rank}`}
+    >
+      <div className="absolute inset-0 rounded-xl mix-blend-soft-light pointer-events-none"
+           style={{ background: "radial-gradient(120% 120% at -10% -10%, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.1) 55%, transparent 60%)" }} />
+      <div className="text-xs font-bold">{rank}</div>
+    </div>
+  );
+}
 function TopicsTab({ topicSummaries, topicMap }) {
-  const [sort, setSort] = useState("weak"); // weak | strong | practiced | recent
+  // Default: strong first (by REL)
+  const [sort, setSort] = useState("strong"); // strong | weak | practiced | recent
+
+  // REL extent for scaling the single bar to 0..100
+  const relExtent = useMemo(() => {
+    if (!topicSummaries.length) return { min: 0, max: 0 };
+    let min = Infinity, max = -Infinity;
+    for (const t of topicSummaries) {
+      const r = t.weakIndex ?? 0;
+      if (r < min) min = r;
+      if (r > max) max = r;
+    }
+    if (min === max) { min -= 0.5; max += 0.5; } // avoid zero span
+    return { min, max };
+  }, [topicSummaries]);
+
+  // Sort: all based on REL, with requested variants
   const sorted = useMemo(() => {
     const arr = [...topicSummaries];
-    if (sort==="weak") arr.sort((a,b)=>a.weakIndex-b.weakIndex);
-    if (sort==="strong") arr.sort((a,b)=>b.weakIndex-a.weakIndex);
-    if (sort==="practiced") arr.sort((a,b)=>b.attempts-a.attempts);
-    if (sort==="recent") arr.sort((a,b)=> (new Date(b.entries[0]?.when||0)) - (new Date(a.entries[0]?.when||0)));
+    if (sort === "weak")      arr.sort((a, b) => (a.weakIndex ?? 0) - (b.weakIndex ?? 0));   // low → high
+    if (sort === "strong")    arr.sort((a, b) => (b.weakIndex ?? 0) - (a.weakIndex ?? 0));   // high → low
+    // "practiced": rank attempts by REL → primary: REL (desc), tiebreaker: attempts (desc)
+    if (sort === "practiced") arr.sort((a, b) =>
+      (b.weakIndex ?? 0) - (a.weakIndex ?? 0) || (b.attempts || 0) - (a.attempts || 0)
+    );
+    if (sort === "recent")    arr.sort((a, b) =>
+      (new Date(b.entries?.[0]?.when || 0)) - (new Date(a.entries?.[0]?.when || 0))
+    );
     return arr;
   }, [topicSummaries, sort]);
 
+  // REL → 0..100 width
+  const scaleRel = (rel) => {
+    const { min, max } = relExtent;
+    return Math.round(100 * ((rel - min) / (max - min)));
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        {["weak","strong","practiced","recent"].map(k => (
-          <button key={k} className={`${btnGhost} ${sort===k?"ring-2 ring-emerald-400/60":""}`} onClick={()=>setSort(k)}>
-            {k[0].toUpperCase()+k.slice(1)}
+      {/* Controls — ordered: strong > weak > most practiced > most recent */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          ["strong", "Strong first"],
+          ["weak", "Weak first"],
+          ["practiced", "Attempts (by REL)"],
+          ["recent", "Most recent"],
+        ].map(([k, label]) => (
+          <button
+            key={k}
+            className={`${btnGhost} ${sort === k ? "ring-2 ring-emerald-400/60" : ""}`}
+            onClick={() => setSort(k)}
+          >
+            {label}
           </button>
         ))}
       </div>
 
-      {sorted.map(t => <TopicCard key={t.topic} t={t} label={topicMap.get(t.topic)?.label || t.topic} />)}
+      <div className="text-[11px] text-white/45">
+        REL bar (single, neutral light → bright). Higher = stronger vs your baseline.
+      </div>
+
+      <div className={`${cardBase} divide-y divide-white/5`}>
+        {sorted.length === 0 && (
+          <div className="p-4 text-sm text-white/50">No topic data yet. Run a session first.</div>
+        )}
+        {sorted.map((t, i) => (
+          <TopicRowBar
+            key={t.topic}
+            index={i + 1}
+            label={topicMap.get(t.topic)?.label || t.topic}
+            rel={t.weakIndex ?? 0}
+            relPct={scaleRel(t.weakIndex ?? 0)}
+            sec={t.avgSec}
+            attempts={t.attempts}
+            sessions={t.sessions}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-function TopicCard({ t, label }) {
-  const [open, setOpen] = useState(false);
-  const top = t.entries.slice().sort((a,b)=>b.score-a.score).slice(0, open ? 20 : 4);
+
+function TopicRowBar({ index, label, rel, relPct, sec, attempts, sessions }) {
+  // Nicer medals
   return (
-    <div className={`${cardBase} p-3`}>
-      <div className="flex items-center justify-between">
-        <div className="font-semibold truncate">{label}</div>
-        <div className="text-xs text-white/50">
-          Attempts {t.attempts} · Acc {Math.round(t.avgAcc*100)}% · {t.avgSec}s/q · Rel {(t.weakIndex>=0?"+":"") + t.weakIndex.toFixed(2)}
+    <div className="p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <MedalBadge rank={index} />
+
+          <div className="min-w-0">
+            {/* Full topic name — allow wrapping */}
+            <div className="font-semibold leading-tight break-words">{label}</div>
+            <div className="text-[11px] text-white/50">
+              REL {rel >= 0 ? "+" : ""}{rel.toFixed(2)} · {sig3(sec)}s/q · {attempts} attempts · {sessions} sessions
+            </div>
+          </div>
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {top.map(e => <SmallSession key={e.id} e={e} />)}
+
+      {/* Single REL bar — neutral, light→bright to match dark bg */}
+      <div className="mt-2 h-2 rounded-full bg-white/5 overflow-hidden" title={`REL ${rel >= 0 ? "+" : ""}${rel.toFixed(2)}`}>
+        <div
+          className="h-full"
+          style={{
+            width: `${relPct}%`,
+            backgroundImage: "linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0.85))",
+            backgroundColor: "transparent",
+            mixBlendMode: "screen",
+            transition: "width 220ms ease",
+          }}
+        />
       </div>
-      {t.entries.length>4 && (
-        <div className="mt-2">
-          <button className={btnGhost} onClick={()=>setOpen(!open)}>{open?"Show less":"Show all"}</button>
-        </div>
-      )}
     </div>
   );
 }
+
+
+/* ------------------ Helpers for visual scaling & color ------------------ */
+
+// Map attempts count (0..max) to a % width (6..100) so even 1 attempt is visible
+// ---- Visual helpers (drop-in) ----
+function sig3(n) {
+  if (!Number.isFinite(n)) return "--";
+  // toPrecision → back to Number to avoid "1.23e+4"
+  return String(Number(Number(n).toPrecision(3)));
+}
+function fmtSec(n) {            // "92.99999s/q" -> "93 s/q" or "9.86 s/q"
+  const s = sig3(n);
+  return s === "--" ? "--" : `${s}s/q`;
+}
+
+// Map attempts count to a visible width (6..100)
+function scaleAttempts(n) {
+  if (!n || n <= 0) return 6;
+  const x = Math.log10(1 + n) / Math.log10(1 + 60); // 60 attempts ~ full bar
+  return Math.round(6 + x * 94);
+}
+
+// Accuracy color (thresholded + smooth blend inside each band)
+function barColor(pct) {
+  const x = Math.max(0, Math.min(100, pct)) / 100;
+  // bands: 0–0.4 red→orange, 0.4–0.7 orange→amber, 0.7–0.85 lime→emerald, 0.85–1 emerald→teal
+  const lerp = (a,b,t)=>Math.round(a+(b-a)*t);
+  const pick = (a,b,t)=>`rgb(${lerp(a[0],b[0],t)}, ${lerp(a[1],b[1],t)}, ${lerp(a[2],b[2],t)})`;
+
+  if (x <= 0.4)   return pick([239,68,68],  [249,115,22],  x/0.4);           // red → orange
+  if (x <= 0.7)   return pick([249,115,22],[245,158,11],  (x-0.4)/0.3);      // orange → amber
+  if (x <= 0.85)  return pick([163,230,53],[16,185,129],  (x-0.7)/0.15);     // lime → emerald
+  return                 pick([16,185,129],[20,184,166],  (x-0.85)/0.15);    // emerald → teal
+}
+
+
+/* ===================== Sessions Tab (ranked list) ===================== */
+
 function SessionsTab({ board, topicMap, highlightId }) {
+  // Highest score first
+  const ranked = useMemo(
+    () => board.slice().sort((a,b)=> (b.score||0) - (a.score||0)),
+    [board]
+  );
+
   const [count, setCount] = useState(20);
-  const show = board.slice(0, count);
+  const show = ranked.slice(0, count);
+
   return (
     <div className="space-y-2">
       {show.length===0 && <div className="text-white/50 text-sm">No entries yet.</div>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {show.map(e => <LeaderboardRow key={e.id} rank={"—"} entry={e} topicMap={topicMap} highlight={e.id===highlightId} />)}
+
+      <div className="grid grid-cols-1 gap-2">
+        {show.map((e, idx) => (
+          <SessionRow
+            key={e.id}
+            rank={idx+1}
+            entry={e}
+            topicMap={topicMap}
+            highlight={e.id===highlightId}
+          />
+        ))}
       </div>
-      {count < board.length && (
+
+      {count < ranked.length && (
         <div className="mt-2">
           <button className={btnGhost} onClick={()=>setCount(c=>c+20)}>Load more</button>
         </div>
@@ -2080,14 +2259,65 @@ function SessionsTab({ board, topicMap, highlightId }) {
   );
 }
 
-function SmallSession({ e }) {
+function SessionRow({ rank, entry, topicMap, highlight=false }) {
+  const date = new Date(entry.when);
+  const topicsLabel = entry.bucket === "MIXED"
+    ? entry.topics.map(t => topicMap.get(t)?.label || t).join(" · ")
+    : (topicMap.get(entry.bucket)?.label || entry.bucket);
+
+  const accPct = Math.round((entry.accuracy || 0) * 100);
+  const barPct = accPct;
+
   return (
-    <div className={`${cardBase} p-2 text-xs flex items-center justify-between`}>
-      <div>{e.score}</div>
-      <div className="text-white/50">{(new Date(e.when)).toLocaleDateString()}</div>
-    </div>
+    <motion.div
+      layout
+      initial={false}
+      animate={highlight ? { scale: 1.02 } : { scale: 1 }}
+      className={`${cardBase} p-3 sm:p-4 relative overflow-hidden ${highlight ? "ring-2 ring-emerald-400/70 shadow-[0_0_0_6px_rgba(16,185,129,0.15)]" : ""}`}
+    >
+      <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* New shiny medal */}
+          <MedalBadge rank={rank} />
+
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-semibold leading-tight">
+              Score {entry.score}
+            </div>
+            <div className="text-[11px] sm:text-xs text-white/60 break-words">
+              {topicsLabel}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right text-[10px] sm:text-xs text-white/50">
+          <div>{date.toLocaleDateString()} {date.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
+          <div>{entry.correct}✔ / {entry.attempts} tries · {accPct}% · {fmtSec(entry.avgSecPerQ)}</div>
+        </div>
+      </div>
+
+      {/* Neutral light→bright progress bar */}
+      <div className="mt-2 h-2 rounded-full bg-white/5 overflow-hidden" title={`Accuracy ${accPct}%`}>
+        <div
+          className="h-full"
+          style={{
+            width: `${barPct}%`,
+            backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0.85))',
+            backgroundColor: 'transparent',
+            mixBlendMode: 'screen',
+            transition: 'width 200ms ease',
+          }}
+        />
+      </div>
+    </motion.div>
   );
 }
+
+
+
+
 
 function KPI({label, value}) {
   return <div className={`${cardBase} p-3 text-center`}><div className="text-xs text-white/50">{label}</div><div className="text-xl font-semibold">{value}</div></div>;
@@ -2157,9 +2387,13 @@ function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
           <div>{entry.correct}✔ / {entry.attempts} tries · {Math.round((entry.accuracy||0)*100)}% · {entry.avgSecPerQ}s/q</div>
         </div>
       </div>
-      <div className="mt-2 h-2 rounded-full bg-white/10 overflow-hidden">
-        <div className="h-full bg-emerald-400/80" style={{width:`${barPct}%`}} />
+      <div className="mt-2 h-2 rounded-full bg-white/5 overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-white/40 to-white/80"
+          style={{ width: `${barPct}%`, mixBlendMode: 'screen' }}
+        />
       </div>
+
     </motion.div>
   );
 }
