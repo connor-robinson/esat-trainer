@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root { color-scheme: dark; }
+    /* Works on Chrome/Edge/Safari */
+    ::-webkit-scrollbar {
+    display: none;
+    }
+
+    /* Works on Firefox */
+    html, body {
+    scrollbar-width: none;   /* hides scrollbar */
+    }
+}
