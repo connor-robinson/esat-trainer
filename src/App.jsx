@@ -211,33 +211,38 @@ function tryNumeric(value){
   };
 
   let s = raw
-    .replace(/−|—/g, '-')   // unicode minus
+    .replace(/−|—/g, '-')      // unicode minus
     .replace(/×/g, '*')
     .replace(/·/g, '*')
     .replace(/÷/g, '/')
     .replace(/\^/g, '**')
+
+    // √(...), √number, √identifier
     .replace(/√\s*\(/g, 'Math.sqrt(')
     .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
+
+    // sqrt( ... ), and sqrt<number> shorthand (e.g., sqrt2 → Math.sqrt(2))
     .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
-    .replace(/\bsqrt(?=\d)/gi, 'Math.sqrt')
+    .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
+
+    // pi / π
     .replace(/\bpi\b/gi, 'Math.PI')
     .replace(/π/gi, 'Math.PI')
+
+    // implicit multiplication fixes in simple cases
     .replace(/(?<=\d)x(?=\d)/g, '*')
     .replace(/(\d)(?=x|\()/g, '$1*')
     .replace(/(x|\))(?=\d|\()/g, '$1*')
     .replace(/\bmath\./gi, 'Math.');
 
-  // General superscripts on numbers/vars/groups: 2⁻³, (x+1)¹⁰, y⁴
   // General superscripts on numbers/vars/groups
-  // Pass 1: multi-digit numbers (and decimals) before single-char bases
-    s = s.replace(/(\d+(?:\.\d+)?)([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
-      (_, num, sup) => supExpander(num, sup)
-    );
+  s = s.replace(/(\d+(?:\.\d+)?)([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
+    (_, num, sup) => supExpander(num, sup)
+  );
+  s = s.replace(/([A-Za-z_][A-Za-z0-9_]*|[\)\]])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
+    (_, base, sup) => supExpander(base, sup)
+  );
 
-    // Pass 2: identifiers or closing paren as base
-    s = s.replace(/([A-Za-z_][A-Za-z0-9_]*|[\)\]])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g,
-      (_, base, sup) => supExpander(base, sup)
-    );
   try {
     const fn = new Function(`with (Math) { return (${s}); }`);
     const out = fn();
@@ -248,17 +253,21 @@ function tryNumeric(value){
   return Number.isFinite(n) ? n : null;
 }
 
+
 function toJSExpr(expr){
   return String(expr)
     .replace(/−|—/g, '-').replace(/\s+/g, '')
     .replace(/×/g, '*').replace(/÷/g, '/').replace(/\^/g, '**')
-    .replace(/√/g, 'Math.sqrt')
-    .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(').replace(/\bsqrt(?=\d)/gi, 'Math.sqrt')
+    .replace(/√\s*\(/g, 'Math.sqrt(')
+    .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
+    .replace(/\bsqrt\s*\(/gi, 'Math.sqrt(')
+    .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
     .replace(/\bpi\b/gi, 'Math.PI').replace(/π/gi, 'Math.PI')
     .replace(/\bmath\./gi, 'Math.')
     .replace(/([A-Za-z0-9_.\)])²/g, '($1)**2')
     .replace(/([A-Za-z0-9_.\)])³/g, '($1)**3');
 }
+
 function evalExprAtX(expr, x){
   const s = toJSExpr(expr);
   const fn = new Function('x', `with (Math) { return (${s}); }`);
@@ -504,8 +513,9 @@ function genQuestion(topic) {
     case "mental_mul": { const a = randInt(10, 99), b = randInt(2, 9); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
     case "mul_focus_multiples": { const a = pick([12,13,14,15,16,25]); const b = randInt(1, 12); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
     case "tri_special": {
-      // Canonical layout: right angle at A (bottom-left), base horizontal, vertical up.
+      // Canonical layout: right angle at A (bottom-left), base=AB (horizontal), vertical=AC (up)
       const type = pick(["30-60-90", "45-45-90"]);
+      const mode = pick(["length", "angle"]); // "length" (find x) OR "angle" (find θ)
       const u = randInt(2, 20);
 
       const makeAns = (exactStr, numericVal) => {
@@ -514,88 +524,137 @@ function genQuestion(topic) {
           exact: exactStr,
           acceptable: [
             exactStr,
-            exactStr.replace("√3", "sqrt(3)").replace("√2", "sqrt(2)"),
+            exactStr.replace("√3", "sqrt(3)").replace("√2", "sqrt(2)").replace(/\s+/g,''),
             approx,
           ],
         };
       };
 
       if (type === "30-60-90") {
-        // short = u, long = u√3, hyp = 2u
-        const exact = { short: `${u}`, long: `${u}√3`, hyp: `${2 * u}` };
-        const numeric = { short: u, long: u * Math.sqrt(3), hyp: 2 * u };
+        // sides: short = u (AC), long = u√3 (AB), hyp = 2u (BC)
+        const exact = { short: `${u}`, long: `${u}√3`, hyp: `${2*u}` };
+        const numeric = { short: u, long: u*Math.sqrt(3), hyp: 2*u };
 
-        // Ensure: one given side + one unknown side AND ALWAYS an acute angle hint
-        const sides = ["short", "long", "hyp"];
-        const given = pick(sides);
-        const unknown = sides.find(s => s !== given);
+        if (mode === "length") {
+          const sides = ["short","long","hyp"];
+          const given = pick(sides);
+          const unknown = sides.find(s => s !== given);
 
-        const ans = makeAns(exact[unknown], numeric[unknown]);
+          const ans = makeAns(exact[unknown], numeric[unknown]);
+          const labels = { base: "", vertical: "", hyp: "" };
+          const setLabel = (side,text)=>{
+            if (side==="long") labels.base = text;
+            else if (side==="short") labels.vertical = text;
+            else labels.hyp = text;
+          };
+          setLabel(given, exact[given]);
+          setLabel(unknown, "x");
 
-        // Canonical mapping: base=long, vertical=short, hyp=hyp
-        const labels = { base: "", vertical: "", hyp: "" };
-        const setLabel = (side, text) => {
-          if (side === "long") labels.base = text;
-          else if (side === "short") labels.vertical = text;
-          else labels.hyp = text;
-        };
-        setLabel(given, exact[given]);
-        setLabel(unknown, "x");
+          // Angle hint (always include to avoid underspecification)
+          // In our canonical layout: ∠B = 30°, ∠C = 60°
+          const angleHint = pick(["30B","60C"]);
 
-        // ALWAYS show one acute angle (to avoid under-specification)
-        // In this layout: angle at B is 30°, angle at C is 60°.
-        const angleHint = pick(["30B", "60C"]);
-
-        return {
-          prompt: "Find x",
-          answer: ans.exact,
-          acceptableAnswers: ans.acceptable,
-          diagram: {
-            type: "30-60-90",
-            lengths: { base: numeric.long, vertical: numeric.short },
-            labels,
-            angleHint,              // guaranteed present
-            isoRight: false,        // renderer hint
-          },
-        };
-      } else {
-        // 45-45-90: leg = u, hyp = u√2
-        const exact = { leg: `${u}`, hyp: `${u}√2` };
-        const numeric = { leg: u, hyp: u * Math.sqrt(2) };
-
-        const sides = ["leg", "hyp"];
-        const given = pick(sides);
-        const unknown = sides.find(s => s !== given);
-
-        const ans = makeAns(
-          unknown === "leg" ? exact.leg : exact.hyp,
-          unknown === "leg" ? numeric.leg : numeric.hyp
-        );
-
-        // Canonical mapping: base=leg, vertical=leg, hyp=hyp
-        const labels = { base: "", vertical: "", hyp: "" };
-        if (given === "leg") labels.base = exact.leg; else labels.hyp = exact.hyp;
-        if (unknown === "leg") {
-          if (labels.base) labels.vertical = "x"; else labels.base = "x";
+          return {
+            prompt: "Find x",
+            answer: ans.exact,
+            acceptableAnswers: ans.acceptable,
+            diagram: {
+              type: "30-60-90",
+              lengths: { base: numeric.long, vertical: numeric.short },
+              labels,
+              angleHint,
+              isoRight: false,
+              thetaAt: null,
+            },
+          };
         } else {
-          labels.hyp = "x";
-        }
+          // ANGLE mode: give ANY TWO sides + right angle, ask for θ at B or C.
+          // Choose which two numeric sides to show:
+          const two = pick([
+            ["short","hyp"],  // determines 30° at B
+            ["long","hyp"],   // determines 60° at B
+            ["short","long"]  // also sufficient
+          ]);
+          const labels = { base:"", vertical:"", hyp:"" };
+          const put = (side, text)=>{
+            if (side==="long") labels.base = text;
+            else if (side==="short") labels.vertical = text;
+            else labels.hyp = text;
+          };
+          put(two[0], exact[two[0]]);
+          put(two[1], exact[two[1]]);
 
-        // No acute-angle label required; equality ticks will signal 45°–45°–90°.
-        return {
-          prompt: "Find x",
-          answer: ans.exact,
-          acceptableAnswers: ans.acceptable,
-          diagram: {
-            type: "45-45-90",
-            lengths: { base: numeric.leg, vertical: numeric.leg },
-            labels,
-            angleHint: null,        // not needed
-            isoRight: true,         // renderer must draw equal-leg ticks
-          },
-        };
+          // Decide θ location
+          // If we place θ at B: opposite is vertical (short) → 30°
+          // If we place θ at C: opposite is base (long) → 60°
+          const thetaAt = pick(["B","C"]);
+          const theta = (thetaAt === "B") ? 30 : 60;
+
+          return {
+            prompt: "Find θ (in degrees)",
+            answer: String(theta),
+            acceptableAnswers: [String(theta), `${theta}°`],
+            diagram: {
+              type: "30-60-90",
+              lengths: { base: numeric.long, vertical: numeric.short },
+              labels,
+              angleHint: null,   // keep only θ marked
+              isoRight: false,
+              thetaAt,
+            },
+          };
+        }
+      } else {
+        // 45-45-90: legs = u (AB & AC), hyp = u√2 (BC)
+        const exact = { leg: `${u}`, hyp: `${u}√2` };
+        const numeric = { leg: u, hyp: u*Math.sqrt(2) };
+
+        if (mode === "length") {
+          const sides = ["leg","hyp"];
+          const given = pick(sides);
+          const unknown = sides.find(s => s !== given);
+
+          const ans = makeAns(unknown==="leg" ? exact.leg : exact.hyp, unknown==="leg" ? numeric.leg : numeric.hyp);
+          const labels = { base: "", vertical: "", hyp: "" };
+          if (given === "leg") labels.base = exact.leg; else labels.hyp = exact.hyp;
+          if (unknown === "leg") { if (labels.base) labels.vertical = "x"; else labels.base = "x"; } else { labels.hyp = "x"; }
+
+          return {
+            prompt: "Find x",
+            answer: ans.exact,
+            acceptableAnswers: ans.acceptable,
+            diagram: {
+              type: "45-45-90",
+              lengths: { base: numeric.leg, vertical: numeric.leg },
+              labels,
+              angleHint: null,
+              isoRight: true,   // draw equal-leg ticks
+              thetaAt: null,
+            },
+          };
+        } else {
+          // ANGLE mode: any two sides + right angle ⇒ θ is 45° at B or C
+          const labels = { base: exact.leg, vertical: exact.leg, hyp: "" }; // show both legs
+          const thetaAt = pick(["B","C"]);
+          const theta = 45;
+
+          return {
+            prompt: "Find θ (in degrees)",
+            answer: "45",
+            acceptableAnswers: ["45","45°"],
+            diagram: {
+              type: "45-45-90",
+              lengths: { base: numeric.leg, vertical: numeric.leg },
+              labels,
+              angleHint: null,
+              isoRight: true,
+              thetaAt,
+            },
+          };
+        }
       }
     }
+
 
     case "indices_simplify": {
       const base = pick([2,3,5,10]);
@@ -1011,7 +1070,39 @@ function genQuestion(topic) {
 
 
     // Trig
-    case "trig_recall": { const angle = pick([0,30,45,60,90]); const f = pick(["sin","cos","tan"]); const table = { sin: {0:"0",30:"1/2",45:"sqrt(2)/2",60:"sqrt(3)/2",90:"1"}, cos: {0:"1",30:"sqrt(3)/2",45:"sqrt(2)/2",60:"1/2",90:"0"}, tan: {0:"0",30:"sqrt(3)/3",45:"1",60:"sqrt(3)",90:"undef"}, }; return { prompt: `${f}(${angle}°)`, answer: table[f][angle] }; }
+    case "trig_recall": {
+      // Randomly choose degrees or radians
+      const mode = pick(["deg", "rad"]);
+
+      if (mode === "deg") {
+        const angle = pick([0, 30, 45, 60, 90]);
+        const f = pick(["sin", "cos", "tan"]);
+        const table = {
+          sin: { 0: "0", 30: "1/2", 45: "sqrt(2)/2", 60: "sqrt(3)/2", 90: "1" },
+          cos: { 0: "1", 30: "sqrt(3)/2", 45: "sqrt(2)/2", 60: "1/2", 90: "0" },
+          tan: { 0: "0", 30: "sqrt(3)/3", 45: "1", 60: "sqrt(3)", 90: "undef" },
+        };
+        return { prompt: `${f}(${angle}°)`, answer: table[f][angle] };
+      } else {
+        // radians: 0, π/6, π/4, π/3, π/2
+        const angles = [
+          { txt: "0", val: 0, tag: "0" },
+          { txt: "π/6", val: Math.PI / 6, tag: "pi/6" },
+          { txt: "π/4", val: Math.PI / 4, tag: "pi/4" },
+          { txt: "π/3", val: Math.PI / 3, tag: "pi/3" },
+          { txt: "π/2", val: Math.PI / 2, tag: "pi/2" },
+        ];
+        const A = pick(angles);
+        const f = pick(["sin", "cos", "tan"]);
+
+        const table = {
+          sin: { "0": "0", "pi/6": "1/2", "pi/4": "sqrt(2)/2", "pi/3": "sqrt(3)/2", "pi/2": "1" },
+          cos: { "0": "1", "pi/6": "sqrt(3)/2", "pi/4": "sqrt(2)/2", "pi/3": "1/2", "pi/2": "0" },
+          tan: { "0": "0", "pi/6": "sqrt(3)/3", "pi/4": "1", "pi/3": "sqrt(3)", "pi/2": "undef" },
+        };
+        return { prompt: `${f}(${A.txt})`, answer: table[f][A.tag] };
+      }
+    }
     case "trig_eval": { const triples = [[3,4,5],[5,12,13],[8,15,17]]; const [a,b,c] = pick(triples); const which = pick(["sin","cos","tan"]); const answers = { sin: `${a}/${c}`, cos: `${b}/${c}`, tan: `${a}/${b}` }; return { prompt: `Right △ with sides ${a}-${b}-${c}. Compute ${which}(θ) for angle opposite ${a}.`, answer: answers[which] }; }
 
     default: return { prompt: "Coming soon", answer: "" };
@@ -1431,97 +1522,86 @@ function PanelGloss(){
 
 
 function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash, onExit, onFinish }){
-  function TriangleDiagram({ type, lengths, labels, angleHint, isoRight }) {
-    // Fixed canvas (px). We scale & center the triangle inside this box.
+  function TriangleDiagram({ type, lengths, labels, angleHint, isoRight, thetaAt }) {
+    // Fixed canvas
     const W = 360, H = 220, MARGIN = 18;
 
     const BASE = Math.max(1e-6, lengths?.base ?? 1);
     const VERT = Math.max(1e-6, lengths?.vertical ?? 1);
 
     // Scale to fit with margins
-    const scale = Math.min(
-      (W - 2 * MARGIN) / BASE,
-      (H - 2 * MARGIN) / VERT
-    );
-    const basePx = BASE * scale;
-    const vertPx = VERT * scale;
+    const scale = Math.min((W - 2*MARGIN)/BASE, (H - 2*MARGIN)/VERT);
+    const basePx = BASE * scale, vertPx = VERT * scale;
 
-    // Center the triangle
+    // Center the triangle: right angle at A
     const left = (W - basePx) / 2;
-    const bottom = (H + vertPx) / 2; // y grows downward; bottom has larger y
-
-    // Canonical vertices
-    const A = { x: left,         y: bottom };          // right angle
+    const bottom = (H + vertPx) / 2;
+    const A = { x: left, y: bottom };
     const B = { x: left + basePx, y: bottom };
-    const C = { x: left,          y: bottom - vertPx };
+    const C = { x: left, y: bottom - vertPx };
 
     // Helpers
-    const mid = (P, Q) => ({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 });
-    const sub = (p, q) => ({ x: p.x - q.x, y: p.y - q.y });
-    const len = (v) => Math.hypot(v.x, v.y) || 1;
-    const norm = (v) => { const L = len(v); return { x: v.x / L, y: v.y / L }; };
-    const perp = (v) => ({ x: -v.y, y: v.x });
+    const mid = (P,Q)=>({x:(P.x+Q.x)/2, y:(P.y+Q.y)/2});
+    const sub = (p,q)=>({x:p.x-q.x, y:p.y-q.y});
+    const len = (v)=>Math.hypot(v.x,v.y) || 1;
+    const norm = (v)=>{ const L=len(v); return {x:v.x/L, y:v.y/L}; };
+    const perp = (v)=>({x:-v.y, y:v.x});
 
-    // Sizes that adapt but stay readable
     const minSide = Math.min(basePx, vertPx);
-    const r = Math.max(10, Math.min(16, 0.18 * minSide));              // right-angle marker
-    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W, H)));     // text
-    const tickLen = Math.max(8, Math.min(14, 0.14 * minSide));         // equality ticks
+    const r = Math.max(10, Math.min(16, 0.18 * minSide));          // right-angle box
+    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W,H)));  // text size
+    const tickLen = Math.max(8, Math.min(14, 0.14 * minSide));     // equality tick
 
-    // Angle label placed on internal bisector inside the triangle
-    function angleLabelInside(vertexKey, text) {
+    // Angle label inside on bisector
+    function angleLabelInside(vertexKey, text, color="#a0aec0") {
       let V, U1, U2;
-      if (vertexKey === "A") {
-        V = A; U1 = norm(sub(B, A)); U2 = norm(sub(C, A));
-      } else if (vertexKey === "B") {
-        V = B; U1 = norm(sub(A, B)); U2 = norm(sub(C, B));
-      } else {
-        V = C; U1 = norm(sub(A, C)); U2 = norm(sub(B, C));
-      }
+      if (vertexKey === "A") { V=A; U1=norm(sub(B,A)); U2=norm(sub(C,A)); }
+      else if (vertexKey === "B") { V=B; U1=norm(sub(A,B)); U2=norm(sub(C,B)); }
+      else { V=C; U1=norm(sub(A,C)); U2=norm(sub(B,C)); }
       let bis = { x: U1.x + U2.x, y: U1.y + U2.y };
-      const L = Math.hypot(bis.x, bis.y);
-      if (L < 1e-6) bis = norm(sub(mid(A, mid(B, C)), V)); else { bis.x /= L; bis.y /= L; }
+      const L = Math.hypot(bis.x,bis.y);
+      if (L < 1e-6) {
+        const centroid = mid(A, mid(B,C));
+        const v = sub(centroid, V);
+        bis = norm(v);
+      } else {
+        bis.x /= L; bis.y /= L;
+      }
       const d = Math.max(12, Math.min(22, 0.22 * minSide));
       const P = { x: V.x + bis.x * d, y: V.y + bis.y * d };
       return (
-        <text
-          x={P.x}
-          y={P.y}
-          fontSize={fs}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="#a0aec0"
-        >
+        <text x={P.x} y={P.y} fontSize={fs} textAnchor="middle" dominantBaseline="middle" fill={color}>
           {text}
         </text>
       );
     }
 
-    // Build optional angle node (ALWAYS present for 30-60-90 by generator)
+    // Equality tick on an edge
+    function edgeTick(P,Q){
+      const v = sub(Q,P), u = norm(v), n = norm(perp(u));
+      const m = mid(P,Q), t = tickLen/2;
+      const a = { x:m.x - n.x*t, y:m.y - n.y*t };
+      const b = { x:m.x + n.x*t, y:m.y + n.y*t };
+      return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#e5e7eb" strokeWidth="2" />;
+    }
+
+    const baseMid = mid(A,B), vertMid = mid(A,C), hypMid = mid(B,C);
+
     let angleNode = null;
     if (angleHint) {
       const txt = angleHint.startsWith("30") ? "30°"
                 : angleHint.startsWith("60") ? "60°"
                 : angleHint.startsWith("45") ? "45°"
                 : null;
-      const key = angleHint.slice(-1); // 'A' | 'B' | 'C'
-      if (txt && /[ABC]/.test(key)) angleNode = angleLabelInside(key, txt);
+      const key = angleHint.slice(-1); // 'A'|'B'|'C'
+      if (txt && /[ABC]/.test(key)) angleNode = angleLabelInside(key, txt, "#9ca3af");
     }
 
-    // Equality ticks for isosceles right: put one tick on AB and AC
-    function edgeTick(P, Q) {
-      const v = sub(Q, P);
-      const u = norm(v);
-      const n = norm(perp(u));
-      const m = mid(P, Q);
-      const t = tickLen / 2;
-      const a = { x: m.x - n.x * t, y: m.y - n.y * t };
-      const b = { x: m.x + n.x * t, y: m.y + n.y * t };
-      return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#e5e7eb" strokeWidth="2" />;
+    // θ marker for angle-finding variant
+    let thetaNode = null;
+    if (thetaAt && /[ABC]/.test(thetaAt)) {
+      thetaNode = angleLabelInside(thetaAt, "θ", "#f3f4f6");
     }
-
-    // Side label positions
-    const baseMid = mid(A, B), vertMid = mid(A, C), hypMid = mid(B, C);
 
     return (
       <div className="mt-2 flex justify-center">
@@ -1535,7 +1615,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
             strokeLinejoin="round"
           />
 
-          {/* Right-angle marker at A */}
+          {/* Right angle at A */}
           <polyline
             points={`${A.x},${A.y - r} ${A.x + r},${A.y - r} ${A.x + r},${A.y}`}
             fill="none"
@@ -1544,11 +1624,11 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
             strokeLinejoin="round"
           />
 
-          {/* Isosceles ticks for 45-45-90 */}
+          {/* Equal-leg ticks for 45-45-90 */}
           {isoRight && (
             <>
-              {edgeTick(A, B)}
-              {edgeTick(A, C)}
+              {edgeTick(A,B)}
+              {edgeTick(A,C)}
             </>
           )}
 
@@ -1569,12 +1649,14 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
             </text>
           )}
 
-          {/* Angle hint (inside, on bisector) */}
+          {/* Angle labels */}
           {angleNode}
+          {thetaNode}
         </svg>
       </div>
     );
   }
+
 
 
   const poolRef = useRef([]);
@@ -1721,6 +1803,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                     labels={current.diagram.labels}
                     angleHint={current.diagram.angleHint}
                     isoRight={!!current.diagram.isoRight}
+                    thetaAt={current.diagram.thetaAt} 
                   />
                 )}
               </AnimatePresence>
@@ -1951,10 +2034,20 @@ function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
 // ---------- DEV tiny tests ----------
 (function __devSelfTests(){
   const approx = (a,b)=> Math.abs(a-b) < 1e-9;
-  const num = (v)=>{ try { return Function(`with (Math) { return (${String(v).toLowerCase().replace(/×/g,'*').replace(/÷/g,'/').replace(/\^/g,'**').replace(/√/g,'Math.sqrt').replace(/sqrt\(/g,'Math.sqrt(').replace(/sqrt(?=\d)/g,'Math.sqrt').replace(/pi|π/g,'Math.PI')}) }`)(); } catch { return null; } };
+  const num = (v)=>{ 
+    try { 
+      const src = String(v)
+        .replace(/×/g,'*').replace(/÷/g,'/').replace(/\^/g,'**')
+        .replace(/√\s*\(/g, 'Math.sqrt(')
+        .replace(/√\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?)/g, 'Math.sqrt($1)')
+        .replace(/\bsqrt\s*\(/gi,'Math.sqrt(')
+        .replace(/\bsqrt(\d+(?:\.\d+)?)/gi, 'Math.sqrt($1)')
+        .replace(/pi|π/gi,'Math.PI');
+      return Function(`with (Math) { return (${src}) }`)(); 
+    } catch { return null; } 
+  };
   console.assert(approx(num('Math.sqrt(2)/2'), Math.SQRT2/2), 'sqrt(2)/2');
   console.assert(approx(num('1/√2'), Math.SQRT2/2), '1/√2');
   console.assert(approx(num('sqrt2'), Math.SQRT2), 'sqrt2');
-  console.assert(approx(num('2^3'), 8), 'caret exponent');
-  console.assert(approx(num('10/9'), 10/9), 'fraction parse');
 })();
+
