@@ -1,5 +1,5 @@
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -1648,6 +1648,35 @@ function PanelGloss(){
     <div className="pointer-events-none absolute -bottom-28 -right-10 h-40 w-72 rotate-12 bg-gradient-to-b from-white/5 to-transparent blur-2xl" />
   </>);
 }
+function Tooltip({ text, children, placement = "top" }) {
+  const pos =
+    placement === "top"
+      ? "bottom-full mb-1"
+      : "top-full mt-1"; // you can pass "bottom" if you prefer
+
+  return (
+    <span className="relative inline-flex group z-20"> {/* z-20 so it’s above neighbors */}
+      {children}
+      <span
+        className={[
+          "pointer-events-none absolute left-1/2 -translate-x-1/2", pos,
+          // box
+          "rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow-lg",
+          // WRAP: set a width so it breaks to two lines
+          "w-56 max-w-[min(80vw,16rem)] whitespace-normal break-words text-left leading-snug",
+          // show on hover
+          "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+          // keep above stuff
+          "z-50"
+        ].join(" ")}
+        role="tooltip"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 
 function SuggestionsPanel() {
   return (
@@ -2490,14 +2519,25 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <KPI label="Sessions" value={n} />
         <KPI
-          label="Avg score"
+          label={
+            <div className="inline-flex items-center gap-1 leading-none overflow-visible">
+              <span>Avg score</span>
+              <Tooltip text="Measurement of accuracy + pace, compared to your usual pace, scaled out of 1000.">
+                <HelpCircle
+                  size={12}
+                  className="text-white/40 hover:text-white/70 cursor-help relative top-[0.5px]"
+                />
+              </Tooltip>
+            </div>
+          }
           value={
             <>
               {avgScore}
               <span className="text-xs text-white/50"> /1000</span>
             </>
           }
-        />        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
+        />
+        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
         <KPI label="Avg sec / Q" value={avgSec} />
       </div>
 
