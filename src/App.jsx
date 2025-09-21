@@ -1,11 +1,11 @@
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Save, Clock, FolderOpen, Settings2, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus } from "lucide-react";
-
 /*
   ESAT Minimal Dark Trainer — V3.1 (FlashBox fix + Symbols)
   - Flash Timer editor now spans full width in Session Folder (green outline fully wraps the input)
@@ -63,7 +63,8 @@ const buttonBase =
   "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition-transform duration-150 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50";
 const btnPrimary = `${buttonBase} bg-emerald-500/90 hover:bg-emerald-500 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_25px_-10px_rgba(16,185,129,0.7)]`;
 const btnGhost = `${buttonBase} bg-white/5 hover:bg-white/10 text-white`;
-
+const btnPrimaryLite = `${buttonBase} bg-emerald-500/80 hover:bg-emerald-500 text-black`;
+const btnSoft = `${buttonBase} bg-white/5 hover:bg-white/10 text-white border border-white/10 shadow-none`;
 // ---------- Data ----------
 const CATEGORIES = {
   CALCULATION: [
@@ -71,7 +72,7 @@ const CATEGORIES = {
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
     { id: "mul_of_5", label: "Multiples of 5" },
-    { id: "mul_focus_multiples", label: "Multiplcation (2 Digit)" },
+    { id: "mul_focus_multiples", label: "Multiplication (2 Digit)" },
     { id: "mental_div", label: "Division" },
     { id: "squares", label: "Squares" },
     { id: "cubes", label: "Cubes" },
@@ -82,7 +83,10 @@ const CATEGORIES = {
     { id: "powers_mixed", label: "Powers of 2" },
     { id: "indices_simplify", label: "Simplifying Indices" },
   ],
-
+  FRACTIONS: [
+    { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
+    { id: "simplify_fraction", label: "Simplifying fractions" },
+  ],
   ALGEBRA: [
     { id: "complete_square", label: "Complete the Square" },
     { id: "inequalities", label: "Inequalities" },
@@ -90,23 +94,17 @@ const CATEGORIES = {
   ],
   EQUATIONS: [
     { id: "suvat_solve", label: "SUVAT" },
-    { id: "units_convert", label: "Units (SI)" },
-  ],
-  FORMULAE: [
+    { id: "units_con vert", label: "Units (SI)" },
     { id: "sphere_volume", label: "Sphere Volume" },
     { id: "sphere_area", label: "Sphere Surface Area" },
     { id: "cylinder_sa", label: "Cylinder Surface Area" },
     { id: "cone_sa", label: "Cone Surface Area" },
-    { id: "square_pyramid_sa", label: "Square Pyramid Surface Area" },
+    { id: "square_pyramid_sa", label: "Square Pyramid SA" },
   ],
   TRIGONOMETRY: [
-    { id: "trig_recall", label: "Trig Recall  " },
-    { id: "trig_eval", label: "Evaluate Trig" },
+    { id: "trig_recall", label: "Trig Ratios " },
+    { id: "trig_eval", label: "Using trig functions" },
     { id: "tri_special", label: "Special Triangles" },
-  ],
-  FRACTIONS: [
-    { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
-    { id: "simplify_fraction", label: "Simplifying fractions" },
   ],
   TOOLS: [
     { id: "flash_timer", label: "Flash Timer (special)" },
@@ -118,6 +116,38 @@ const PRESETS = [
   { name: "TRIGONOMETRY", topics: ["trig_recall", "trig_eval"] },
   { name: "GEOMETRY SA/V", topics: ["sphere_volume","sphere_area","cylinder_sa","cone_sa","square_pyramid_sa"] },
   { name: "EQUATIONS MIX", topics: ["suvat_solve", "speed_basic", "units_convert"] },
+];
+const TUTORIAL_SLIDES = [
+  {
+    title: "Build a session",
+    video: "/tutorial/dragging.mp4", // replace with your poster or thumbnail
+    caption: "Drag topics from the left into the Session Folder. Click “+” to add quickly without dragging."
+  },
+  {
+    title: "Flash timer",
+    video: "/tutorial/flashtimer.mp4",
+    caption: "Add the Flash Timer and set seconds inside the folder to hide questions for fast recall."
+  },
+  {
+    title: "Save a preset", 
+    video: "/tutorial/savedsessions.mp4",
+    caption: "Save a certain combination of topics so you can start a session in the future quickly."
+  },
+  {
+    title: "Start a session", 
+    video: "/tutorial/startsession.mp4",
+    caption: "Set the timer, and do as many questions as you can within that time."
+  },
+  {
+    title: "During practice",
+    video: "/tutorial/symbolbar.mp4",
+    caption: "Type answers, use the mini symbols, press Enter to check. Wrong → Check again → Reveal → Next."
+  },
+  {
+    title: "Performance",
+    video: "/tutorial/performance.mp4",
+    caption: "Track progress by topic. REL bar shows stronger/weaker vs your own baseline."
+  },
 ];
 
 // ---------- Local storage ----------
@@ -151,6 +181,16 @@ function toSup(n){ return String(n).split("").map(ch => SUP[ch] ?? ch).join("");
 const SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 const SUP_MINUS = "⁻";
 const DIGITS = "0123456789";
+
+function mean(arr){ return arr.length ? arr.reduce((s,x)=>s+x,0) / arr.length : 0; }
+
+// Use entry.accuracy if present (it’s already Laplace-smoothed in computeScore),
+// else fall back to (correct+1)/(attempts+2)
+function entryAcc(e){
+  if (Number.isFinite(e?.accuracy)) return e.accuracy;
+  const c = e?.correct ?? 0, a = e?.attempts ?? 0;
+  return (c + 1) / (a + 2);
+}
 
 function toSuperscriptFromCaret(text) {
   // turn ^-12, ^10, ^3 etc. into superscripts
@@ -370,7 +410,7 @@ function DraggableTopic({ id, label }) {
     <motion.div
       layout ref={setNodeRef} style={style}
       {...attributes} {...listeners}
-      className={`${cardBase} px-3 py-2 text-sm text-white/90 hover:text-white cursor-grab active:cursor-grabbing select-none border-white/10 bg-white/[0.03]`}
+      className={`${cardBase} px-3 py-2 text-sm text-white/90 hover:text-white cursor-grab active:cursor-grabbing select-none border-white/10 bg-white/[0.03] transform-gpu will-change-transform`}
       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
     >{label}</motion.div>
   );
@@ -399,7 +439,10 @@ function DraggableFlashTimer() {
 function DroppableFolder({ id, children }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={`${panel} min-h-[140px] flex flex-col gap-3 justify-center items-center text-white/80 relative overflow-hidden ${isOver?"ring-2 ring-emerald-400/40":""}`}>
+    <div
+      ref={setNodeRef}
+      className={`${panel} min-h-[140px] flex flex-col gap-3 justify-center items-center text-white/80 relative overflow-hidden ${isOver ? "ring-2 ring-emerald-400/50" : ""}`}
+    >
       <div className="pointer-events-none absolute -top-20 right-0 h-40 w-72 rotate-12 bg-gradient-to-b from-white/10 to-transparent blur-2xl" />
       {children}
     </div>
@@ -912,8 +955,10 @@ function genQuestion(topic) {
 
     // Algebra
     case "complete_square": {
-      const b = randInt(-10, 10);
-      const c = randInt(-10, 10);
+      // force b to be even so p = b/2 is always integer
+      let b = randInt(-15, 15);
+      if (b % 2 !== 0) b += 1;  // adjust to nearest even
+      const c = randInt(-15, 15);
 
       // p = b/2, q = (4c - b^2)/4
       const p = b / 2;
@@ -940,13 +985,14 @@ function genQuestion(topic) {
       const ansCaret = ans.replace(/²/g, "^2"); // alternative ^2 version
 
       const prompt = `Complete the square: x² ${b >= 0 ? "+" : "-"} ${Math.abs(b)}x ${c >= 0 ? "+" : "-"} ${Math.abs(c)}`;
-      console.log(ans)
+
       return {
         prompt,
         answer: ans,
         acceptableAnswers: [ans, ansCaret],
       };
     }
+
 
 
     case "inequalities": { const a = pick([2,3,4,5,-2,-3]); const b = randInt(-10, 10); const c = randInt(-10, 10); let bound = (c - b) / a; const dir = a > 0 ? "<" : ">"; const fmt = (n)=> Number.isInteger(n)? `${n}` : n.toFixed(2); return { prompt: `Solve: ${a}x ${b>=0?"+":"-"} ${Math.abs(b)} ${"<"} ${c}`.replace("<", dir), answer: `x ${dir} ${fmt(bound)}` }; }
@@ -1017,49 +1063,111 @@ function genQuestion(topic) {
     case "cone_sa": { const r = randInt(1, 15), l = randInt(r+1, r+15); const val = Math.PI*r*(r + l); return { prompt: `Surface area of cone, r=${r}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
     case "square_pyramid_sa": { const a = randInt(2, 20), l = randInt(2, 25); const val = a*a + 2*a*l; return { prompt: `Surface area of square pyramid, base a=${a}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
     case "common_frac_to_dec_2dp": {
-      // --- denominator (same weights; 7 forces unit fraction) ---
-      const q = weightedPick2([
-        [3, 1], [4, 1], [5, 1],
-        [6, 1], [7, 0.5], [8, 1], [9, 1], [11, 1]
-      ]);
+      // ----- helpers -----
+      const to2dp = (x) => Number.isFinite(x) ? (Math.round(x * 100) / 100).toFixed(2) : "";
+      const toMinDpUpTo2 = (x) => {
+        if (!Number.isFinite(x)) return "";
+        const s = (Math.round(x * 100) / 100).toFixed(2);
+        return s.replace(/\.?0+$/, ""); // trim trailing zeros and dot
+      };
+      const reduce = (p, q) => {
+        const g = gcd(p, q);
+        p /= g; q /= g;
+        if (q < 0) { p = -p; q = -q; }
+        return [p, q];
+      };
+      const isTerm = (q) => isTerminatingDenom(q);
 
-      // Numerator rules
-      const hard = q >= 6;
-      const maxNum = hard ? (q + 1) : 30;
-      let p = randInt(1, Math.max(2, maxNum));
+      // Convert recurring decimal i . nonRep (rep)  -> fraction p/q
+      function recurringToFraction(intPart, nonRepStr, repStr) {
+        const m = nonRepStr.length;          // non-repeating length
+        const n = repStr.length;             // repeating length
+        const i = intPart | 0;
+        const A = nonRepStr ? parseInt(nonRepStr, 10) : 0;
+        const B = parseInt(repStr, 10);
 
-      // Avoid trivial integer; tweak 7ths to unit fraction
-      if (p % q === 0) p = Math.max(1, p - 1);
-      if (q === 7) p = 1;
+        const pow10m = Math.pow(10, m);
+        const pow10n = Math.pow(10, n);
 
-      // Reduce to lowest terms
-      const g = gcd(p, q);
-      const P = p / g, Q = q / g;
+        // value = i + A/10^m + B / (10^m * (10^n - 1))
+        let num = i * pow10m * (pow10n - 1) + A * (pow10n - 1) + B;
+        let den = pow10m * (pow10n - 1);
 
-      // Decide dp: terminating → 2 d.p., recurring → 4 d.p.
-      const terminating = isTerminatingDenom(Q);
-      const dp = terminating ? 2 : 4;
+        return reduce(num, den);
+      }
 
-      // Round and format for the prompt/answer
-      const dec = P / Q;
-      const decRounded = Math.round(dec * 1e4) / 1e4;      // cap at 4 d.p.
-      const decStr = decRounded.toFixed(4).replace(/\.?0+$/,""); // trim zeros & dot
-
-      // 50/50 direction
+      // ----- choose mode -----
+      // 50% FRACTION→DECIMAL(2dp), 50% DECIMAL→FRACTION (finite or recurring)
       const toDecimal = Math.random() < 0.5;
 
       if (toDecimal) {
-        // FRACTION → DECIMAL (show minimal d.p. up to 4)
+        // pick denominator and numerator
+        const q = weightedPick2([
+          [3, 1], [4, 1], [5, 1],
+          [6, 1], [7, 0.5], [8, 1], [9, 1], [11, 1]
+        ]);
+
+        const hard = q >= 6;
+        const maxNum = hard ? (q + 1) : 30;
+        let p = randInt(1, Math.max(2, maxNum));
+        if (p % q === 0) p = Math.max(1, p - 1); // avoid integer
+        if (q === 7) p = 1;                      // nicer 1/7 etc.
+
+        const [P, Q] = reduce(p, q);
+        const val = P / Q;
+
+        const answer = to2dp(val); // always 2 d.p.
+
         return {
-          prompt: `Fraction to decimal.: ${P}/${Q}`,
-          answer: decStr,
+          prompt: `Convert to 2 d.p.: ${P}/${Q}`,
+          answer
         };
       } else {
-        // DECIMAL → FRACTION (show minimal d.p. up to 4)
-        return {
-          prompt: `Convert to a fraction in lowest terms: ${decStr}`,
-          answer: `${P}/${Q}`,
-        };
+        // DECIMAL → FRACTION
+        const useRecurring = Math.random() < 0.45; // ~45% recurring, rest finite
+
+        if (useRecurring) {
+          // Build a recurring decimal like 0.(3), 0.(27), 1.2(7), 2.0(45)
+          const intPart = randInt(0, 3);
+          const nonRepLen = weightedPick2([[0, 1], [1, 1], [2, 0.6]]);   // 0–2 non-repeating digits
+          const repLen = weightedPick2([[1, 1], [2, 0.9]]);         // 1–2 repeating digits
+
+          const digit = () => String(randInt(0, 9));
+          const nonRep = Array.from({ length: nonRepLen }, digit).join("");
+          let rep = Array.from({ length: repLen }, digit).join("");
+
+          // avoid trivial repeat "0", and avoid repeating '0' only
+          if (/^0+$/.test(rep)) rep = "3";
+
+          // fraction
+          const [p, q] = recurringToFraction(intPart, nonRep, rep);
+          const [P, Q] = reduce(p, q);
+          const shown = `${intPart}.${nonRep}(${rep})`.replace(/\.$/, ""); // e.g. "0.(3)" or "1.2(7)"
+
+          return {
+            prompt: `Convert to a fraction (lowest terms): ${shown}`,
+            answer: `${P}/${Q}`
+          };
+        } else {
+          // finite decimal with up to 2 d.p. (exact, not rounded)
+          const intPart = randInt(0, 20);
+          const dp = weightedPick2([[0, 0.6], [1, 1], [2, 1]]); // bias towards 1–2 d.p.
+          const base = intPart + randInt(0, 99) / 100;     // seed
+          const val = Math.round(base * Math.pow(10, dp)) / Math.pow(10, dp);
+          const shown = toMinDpUpTo2(val);
+
+          // to fraction
+          let P, Q;
+          if (dp === 0) { P = Math.round(val); Q = 1; }
+          else if (dp === 1) { P = Math.round(val * 10); Q = 10; }
+          else { P = Math.round(val * 100); Q = 100; }
+          [P, Q] = reduce(P, Q);
+
+          return {
+            prompt: `Convert to a fraction in lowest terms: ${shown}`,
+            answer: `${P}/${Q}`
+          };
+        }
       }
     }
 
@@ -1125,12 +1233,12 @@ export default function App(){
   const [view, setView] = useState("builder");
   const [folderTopics, setFolderTopics] = useState([]); // ids
   const [activeId, setActiveId] = useState(null);
-  const [durationMin, setDurationMin] = useState(5);
+  const [durationMin, setDurationMin] = useState(1);
   const [flashSeconds, setFlashSeconds] = useState(0);
   const [sessions, setSessions] = useSavedSessions();
   const [board, setBoard] = useLeaderboard();
   const [lastEntryId, setLastEntryId] = useState(null);
-  
+  const [showTutorial, setShowTutorial] = useState(false);
   const topicMap = useMemo(()=>{ const m = new Map(); Object.entries(CATEGORIES).forEach(([,items])=>items.forEach(it=>m.set(it.id,it))); return m; },[]);
   const hasOnlyFlash = useMemo(()=> folderTopics.length===1 && folderTopics[0]==="flash_timer", [folderTopics]);
   const canStart = useMemo(()=> folderTopics.length>0 && !hasOnlyFlash && (!folderTopics.includes("flash_timer") || flashSeconds>0), [folderTopics, hasOnlyFlash, flashSeconds]);
@@ -1167,11 +1275,15 @@ export default function App(){
       <div className="sticky top-0 z-40 border-b border-white/5 bg-[#0e0f13]/70 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 shadow-[0_10px_30px_-10px_rgba(16,185,129,0.7)]" />
-            <div className="text-sm text-white/60">ESAT</div>
-            <div className="text-white font-semibold tracking-tight">Minimal Trainer</div>
+            <div className="h-8 w-8 rounded-2xl bg-gradient-to-br from-emerald-400 to-red-300 shadow-[0_10px_30px_-10px_rgba(16,185,129,0.7)]" />
+            <div className="text-white/70 font-semibold tracking-tight">NO-CALC</div>
+            <div className="text-white/30 font-semibold tracking-tight">Trainer for non-calculator exams</div>
           </div>
-          <div className="flex items-center gap-2"><button className={btnGhost}><Settings2 size={16}/>Settings</button></div>
+          <div className="flex items-center gap-2">
+            <button className={btnGhost} onClick={() => setShowTutorial(true)}>
+              <BookOpen size={16} /> Tutorial
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1208,6 +1320,12 @@ export default function App(){
       <div className="relative">
         <div className="pointer-events-none absolute -bottom-40 left-1/2 -translate-x-1/2 h-80 w-[60rem] rounded-full bg-emerald-500/10 blur-3xl overflow-hidden" />
       </div>
+      <TutorialModal
+        open={showTutorial}
+        slides={TUTORIAL_SLIDES}
+        onClose={() => setShowTutorial(false)}
+      />
+
     </div>
   );
 }
@@ -1228,17 +1346,18 @@ function BuilderView({
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const el = document.querySelector('input[placeholder="Search topics…"]');
-        if (el) {
-          e.preventDefault();
-          el.focus();
-        }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (state === "finished") return;
+        if (phase === "go") doCheck();
+        else if (phase === "reveal") revealAnswer();
+        else if (phase === "next") next();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
   const [topicQuery, setTopicQuery] = useState("");
   const [triedStart, setTriedStart] = useState(false);
   const [showStartWarning, setShowStartWarning] = useState(false);
@@ -1267,21 +1386,21 @@ const startBlockReason = !folderTopics.length
   }
   return (
     <DndContext
-      collisionDetection={pointerWithin}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      autoScroll     // ⬅️ stop the automatic window scrolling
-    >
+  collisionDetection={pointerWithin}
+  onDragStart={onDragStart}
+  onDragEnd={onDragEnd}
+  autoScroll={{ enabled: true, layoutShiftCompensation: false, interval: 12, acceleration: 1 }}
+  modifiers={[restrictToWindowEdges]}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Left: Topic selector ONLY */}
         <div className="flex flex-col gap-6">
-          <motion.div layout="position" className={`${panel} relative`}>
+          <div className={`${panel} relative isolate`}>
             <PanelGloss />
 
             {/* Sticky mini header inside the panel */}
             <div className="flex items-center justify-between mb-3 sticky top-0 bg-[#171a20]/90 backdrop-blur px-1 py-2 -mx-1 z-10 border-b border-white/5">
               <h2 className="text-lg font-semibold tracking-tight">Choose Topics</h2>
-              <span className="text-xs text-white/50">Drag or click “Add”</span>
+              <span className="text-xs text-white/50">Drag or click "+"</span>
             </div>
             <div className="mb-3">
               <input
@@ -1302,7 +1421,8 @@ const startBlockReason = !folderTopics.length
     grid grid-cols-1 md:grid-cols-2 gap-4
     max-h-[calc(100vh-220px)]
     overflow-y-auto overflow-x-hidden
-    scrollbar-stealth">              
+    scrollbar-stealth"
+    style={{ scrollbarGutter: 'stable both-edges' }}>              
               {Object.entries(CATEGORIES).map(([cat, items]) => {
                 const list = topicQuery
                   ? items.filter(t =>
@@ -1349,6 +1469,8 @@ const startBlockReason = !folderTopics.length
                 );
               })}
             </div>
+                        <div className="my-3 border-t border-white/10" />
+
                         <div className="mt-4">
               <div className="text-xs uppercase tracking-wider text-white/50 mb-2">
                 Saved Sessions
@@ -1382,7 +1504,7 @@ const startBlockReason = !folderTopics.length
                 </div>
               )}
             </div>
-          </motion.div>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -1398,7 +1520,21 @@ const startBlockReason = !folderTopics.length
               <div className="w-full">
                 <SortableContext items={folderTopics} strategy={verticalListSortingStrategy}>
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 w-full auto-rows-auto">
-                    {folderTopics.length===0 && (<div className="text-white/40 text-sm">Drop topics here…</div>)}
+                    {folderTopics.length === 0 && (
+                      <div className="col-span-full w-full">
+                        <div className="
+      rounded-2xl border-2 border-dashed border-white/10 hover:border-white/20
+      bg-white/[0.02] text-white/60
+      p-6 flex flex-col items-center justify-center gap-2
+      transition-colors">
+                          <div className="flex items-center gap-2 text-sm">
+                            <GripVertical size={16} className="opacity-70" />
+                            <span className="font-medium">Drag topics here</span>
+                          </div>
+                          <div className="text-xs text-white/40">Add a topic to start a session</div>
+                        </div>
+                      </div>
+                    )}
                     {folderTopics.map(id => (
                       id === "flash_timer" ? (
                         <FolderFlashTimerEditor
@@ -1421,47 +1557,39 @@ const startBlockReason = !folderTopics.length
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 bg-whiteborder border-white/10 rounded-2xl px-3 py-2 text-sm">
-                  <Clock size={16} className="text-white/60"/>
+                <div className={`${btnSoft} px-3 py-2`}>
+                  <Clock size={16} className="text-white/60" />
                   <input
                     type="text"
                     inputMode="decimal"
                     value={durationStr}
                     onChange={(e) => setDurationStr(e.target.value)}
                     onBlur={() => {
-                      if (isValidDurationDecimal(durationStr)) {
-                        setDurationMin(parseFloat(durationStr));
-                      }
+                      if (isValidDurationDecimal(durationStr)) setDurationMin(parseFloat(durationStr));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        if (isValidDurationDecimal(durationStr)) {
-                          setDurationMin(parseFloat(durationStr));
-                        }
+                        if (isValidDurationDecimal(durationStr)) setDurationMin(parseFloat(durationStr));
                       }
                     }}
                     aria-invalid={durationStr !== "" && !isValidDurationDecimal(durationStr)}
-                    className={`bg-transparent outline-none w-20 text-white placeholder:text-white/40 border ${
-                      durationStr !== "" && !isValidDurationDecimal(durationStr)
-                        ? "border-red-500/60 focus:border-red-400/70"
-                        : "border-white/10 focus:border-emerald-400/50"
-                    } rounded-xl px-2 py-1`}
+                    className={`bg-transparent outline-none w-14 text-white placeholder:text-white/40 text-sm text-center`}
+                    placeholder="min"
                   />
                   <span className="text-white/60">min</span>
-                </label>
-                <button onClick={()=>saveSession(prompt("Save session as:"))} className={btnGhost}>
-                  <Save size={16}/>Save
+                </div>
+
+                <button onClick={() => saveSession(prompt("Save session as:"))} className={btnSoft}>
+                  <Save size={16} />Save
                 </button>
-                <button onClick={()=>setFolderTopics([])} className={btnGhost}>
-                  <Trash2 size={16}/>Clear
+                <button onClick={() => setFolderTopics([])} className={btnSoft}>
+                  <Trash2 size={16} />Clear
                 </button>
-                <button disabled={!canStart} onClick={onStart} className={`${btnPrimary} disabled:opacity-50`}>
-                  <Play size={16}/>Start
+                <button disabled={!canStart} onClick={onStart} className={`${btnPrimaryLite} disabled:opacity-50`}>
+                  <Play size={16} />Start
                 </button>
-                {!canStart && startBlockReason && (
-                  <span className="text-xs text-amber-300/80">{startBlockReason}</span>
-                )}
+
                 {durationStr !== "" && !isValidDurationDecimal(durationStr) && (
                   <span className="text-xs text-red-400 ml-2">Enter a positive number</span>
                 )}
@@ -1675,6 +1803,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   const [answer, setAnswer] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
   const [state, setState] = useState("idle"); // idle | wrong | correct | finished | revealed
+  const [phase, setPhase] = useState("go");   // go | reveal | next
   const [attempts, setAttempts] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState(() => Math.max(5, Math.round(durationMin * 60)));
@@ -1684,6 +1813,15 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   const times = useRef([]); // seconds per correct question
   const qStart = useRef(Date.now());
   const hideTimer = useRef(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  useEffect(() => {
+    if (!showExitConfirm) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowExitConfirm(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showExitConfirm]);
 
     // Typeset ONLY the prompt node when it changes/ unhides
 
@@ -1695,18 +1833,20 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     hideTimer.current = setTimeout(()=> setHidden(true), ms);
   }
 
-  function next(){
-  if (poolRef.current.length === 0) refillPool();
-  const id = poolRef.current.length ? poolRef.current.shift() : null;
+  function next() {
+    if (poolRef.current.length === 0) refillPool();
+    const id = poolRef.current.length ? poolRef.current.shift() : null;
     const q = id ? genQuestion(id) : { prompt: "Add a topic to start", answer: "" };
     setHidden(false);
     setCurrent({ ...q, id });
     setAnswer("");
     setState("idle");
+    setPhase("go"); // <-- add this
     qStart.current = Date.now();
     if (id) scheduleFlashHide(id);
-    requestAnimationFrame(()=> inputRef.current?.focus());
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
+
 
   useEffect(()=>{ next(); }, []);
   useEffect(()=>{ inputRef.current?.focus(); }, [current]);
@@ -1719,42 +1859,54 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   function endSession(){
     setState("finished");
     const elapsed = Math.max(1, (Date.now() - startedAt.current)/1000);
+    const correct = times.current.length;
+    const attemptsTotal = attempts; // or convert to a ref if you want 100% safety
     const avgSecPerQ = times.current.length ? (times.current.reduce((a,b)=>a+b,0)/times.current.length) : elapsed/Math.max(1,correctCount);
     const uniqTopicIds = [...new Set(topicIds.filter(t=>t!=="flash_timer"))];
     const isMixed = new Set(uniqTopicIds).size > 1;
-    const { score, accuracy } = computeScore({ correct: correctCount, attempts, durationSec: elapsed});
-    const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ*100)/100, attempts, correct: correctCount, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin*60), };
+    const { score, accuracy } = computeScore({ correct, attempts: attemptsTotal, durationSec: elapsed });
+    const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ*100)/100, attempts: attemptsTotal, correct, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin*60), };
     onFinish?.(entry);
   }
 
-  function doCheck(){
+  function doCheck() {
     if (!current || state === "finished") return;
-    console.log("🔎 Checking answer:", {
-      userRaw: answer,
-      userJS: toJSExpr(answer),
-      userNumeric: tryNumeric(answer),
-      expectedRaw: current?.answer,
-      expectedJS: toJSExpr(current?.answer ?? ''),
-      expectedNumeric: tryNumeric(current?.answer),
-      topic: current?.id,
-      prompt: current?.prompt
-    });
-
 
     const ok = typeof current?.checker === "function"
       ? current.checker(answer)
-      : answersMatch(answer, current.answer);
+      : equalish(answer, current.answer);
 
-    setAttempts(a=>a+1);
-    if (ok){
-      const dt = (Date.now() - qStart.current)/1000; times.current.push(dt);
-      setState("correct"); setCorrectCount(c=>c+1);
-      setTimeout(()=> next(), 60);
-    } else { setState("wrong"); }
+    setAttempts(a => a + 1);
+
+    if (ok) {
+      const dt = (Date.now() - qStart.current) / 1000;
+      times.current.push(dt);
+      setState("correct");
+      setTimeout(() => next(), 60); // same auto-advance
+    } else {
+      setState("wrong");
+      // Ensure the primary stays "Reveal answer" after any wrong attempt(s)
+      setPhase("reveal");
+    }
   }
 
-  function submit(e){ e.preventDefault(); doCheck(); }
-  function revealAnswer(){ setAttempts(a=>a+1); setState("revealed"); setTimeout(()=> next(), 500); }
+  function submit(e){
+    e.preventDefault();
+    if (state === "finished") return;
+
+    if (phase === "go")       doCheck();
+    else if (phase === "reveal") revealAnswer();
+    else if (phase === "next")   next();
+    else doCheck();
+  }
+
+
+  function revealAnswer() {
+    if (!current || state === "finished") return;
+    setAttempts(a => a + 1);
+    setState("revealed");
+    setPhase("next"); // next press (or Enter) should go to next question
+  }
 
   // --- Symbols inserter --- will suggest based on prompt
   function insertAtCursor(text){
@@ -1769,7 +1921,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   }
   const suggestedSymbols = useMemo(()=>{
     const p = (current?.prompt || "").toLowerCase();
-    const base = ["√", "π", "^", "^2", "^3", "(", ")", "×", "÷", "/"];
+    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷"];
     const need = new Set(base);
     if (p.includes("π") || p.includes("pi")) need.add("π");
     if (p.includes("^") || p.includes("power") || p.includes("²") || p.includes("³")) need.add("^");
@@ -1784,7 +1936,19 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
       <div className={`${panel} relative overflow-visible`}>
         <PanelGloss />
         <div className="flex items-center justify-between">
-          <button onClick={()=>{if(state!=="finished") endSession(); onExit();}} className={btnGhost}><FolderOpen size={16}/>Back</button>
+          <button
+            onClick={() => {
+              if (state === "finished") {
+                endSession();          // safe to save when finished
+                onExit();
+              } else {
+                setShowExitConfirm(true); // ask before abandoning
+              }
+            }}
+            className={btnGhost}
+          >
+            <ArrowLeft size={16} />Back
+          </button>
           <div className="flex items-center gap-4 text-sm text-white/70">
             <div className="flex items-center gap-1"><Clock size={16}/><span>{Math.max(0,timeLeft)}s</span></div>
             <div>Attempts: {attempts}</div>
@@ -1831,18 +1995,32 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                     }`}
                 />
 
-                {/* Single submit button: shows Go initially, Check when wrong */}
+                {/* Primary action cycles: Go → Reveal answer → Next */}
                 <button className={btnPrimary} type="submit">
-                  {state === "wrong" ? <Check size={16} /> : <Play size={16} />}
-                  {state === "wrong" ? "Check" : "Go"}
+                  {phase === "go" && (<><Play size={16} /> Go</>)}
+                  {phase === "reveal" && (<><Eye size={16} /> Reveal</>)}
+                  {phase === "next" && (<><Check size={16} /> Next</>)}
                 </button>
 
-                {/* Keep Reveal button (optional) */}
-                {hidden && (
-                  <button type="button" onClick={revealAnswer} className={btnGhost}>
-                    <Eye size={16} />Reveal answer
+                {/* Secondary: keep a “Check again” button while user is in reveal phase (i.e., after a wrong try) */}
+                {phase === "reveal" && (
+                  <button type="button" onClick={doCheck} className={btnGhost}>
+                    <Check size={16} /> Again
                   </button>
                 )}
+
+                {/* If the prompt was hidden by Flash Timer, optionally allow revealing immediately before any check */}
+                {hidden && phase === "go" && (
+                  <button
+                    type="button"
+                    onClick={() => { setState("revealed"); setPhase("next"); }}
+                    className={btnGhost}
+                  >
+                    <Eye size={16} /> Reveal now
+                  </button>
+                )}
+
+
               </form>
 
 
@@ -1859,7 +2037,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
               <div className="h-10 mt-3">
                 <AnimatePresence>
                   {state==="correct" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="inline-flex items-center gap-2 text-emerald-400"><Check size={18}/> Correct</motion.div>)}
-                  {state==="wrong" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="text-red-400">Wrong — try again</motion.div>)}
+                  {state==="wrong" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="text-red-400">Incorrect, try again.</motion.div>)}
                   {state==="revealed" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="text-white/70">Answer: <span className="text-white font-semibold">{current?.answer}</span></motion.div>)}
                 </AnimatePresence>
               </div>
@@ -1867,87 +2045,322 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
           ) : (
             <SessionSummary onExit={onExit} />
           )}
+          <AnimatePresence>
+            {showExitConfirm && (
+              <>
+                {/* Dim backdrop */}
+                <motion.div
+                  key="exit-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+                  onClick={() => setShowExitConfirm(false)}
+                />
+
+                {/* Centered dialog */}
+                <motion.div
+                  key="exit-dialog"
+                  initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 28 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center px-4"
+                  role="dialog"
+                  aria-modal="true"
+                >
+                  <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1d23] shadow-xl">
+                    <div className="p-5">
+                      {/* Header — centered icon + title on one row */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className="inline-flex items-center justify-center gap-2">
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-amber-400/25 bg-amber-400/10">
+                            <AlertTriangle className="text-amber-300" size={18} />
+                          </span>
+                          <h3 className="text-base font-semibold tracking-tight">
+                            Leave session?
+                          </h3>
+                        </div>
+                        <p className="mt-2 text-sm text-white/70">
+                          This session won’t be saved to the leaderboard.
+                        </p>
+                      </div>
+
+                      <div className="mt-6 flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => setShowExitConfirm(false)}
+                          className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 text-white/90"
+                        >
+                          Keep practicing
+                        </button>
+                        <button
+                          onClick={() => { setShowExitConfirm(false); onExit(); }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm bg-amber-500/90 hover:bg-amber-500 text-black font-medium"
+                        >
+                          <ArrowLeft size={16} /> Leave
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
+    
+  );
+}
+
+function TutorialModal({ open, slides = [], onClose }) {
+  const [i, setI] = React.useState(0);
+  const total = slides.length || 0;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+      if (e.key === "ArrowRight") setI((v) => Math.min(total - 1, v + 1));
+      if (e.key === "ArrowLeft") setI((v) => Math.max(0, v - 1));
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("overflow-hidden");
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, [open, total, onClose]);
+
+  if (!open || total === 0) return null;
+
+  const slide = slides[i];
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="tutorial-backdrop"
+        className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      />
+      <motion.div
+        key="tutorial-card"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+        initial={{ opacity: 0, y: 14, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        transition={{ duration: 0.18 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tutorial"
+      >
+        <div className={`${panel} w-full max-w-3xl p-0 overflow-hidden`}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+            <div className="flex items-center gap-2 text-white/90">
+              <BookOpen size={18} className="text-white/70" />
+              <div className="font-semibold">{slide.title}</div>
+            </div>
+            <button className={`${btnGhost} h-9`} onClick={onClose} aria-label="Close tutorial">
+              <X size={16} /> Close
+            </button>
+          </div>
+
+          {/* Media */}
+          <div className="px-5 pt-4">
+            <div className="relative rounded-xl overflow-hidden bg-white/5 border border-white/10">
+              {slide.video ? (
+                <video
+                  key={slide.video}              // reset playback when slide changes
+                  src={slide.video}
+                  className="w-full h-auto aspect-video object-cover"
+                  controls
+                  playsInline
+                  preload="metadata"
+                // optional:
+                // autoPlay
+                // muted
+                // loop
+                />
+              ) : slide.img ? (
+                <img
+                  src={slide.img}
+                  alt={slide.title}
+                  className="w-full h-auto aspect-video object-cover"
+                  draggable={false}
+                />
+              ) : null}
+
+              {/* Left/Right controls … (unchanged) */}
+            </div>
+          </div>
+
+          {/* Caption + dots */}
+          <div className="px-5 pb-4 pt-3">
+            <div className="text-white/70 text-sm">{slide.caption}</div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {slides.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setI(idx)}
+                    aria-label={`Go to slide ${idx + 1}`}
+                    className={`h-2.5 rounded-full transition-all ${
+                      idx === i ? "w-6 bg-white/90" : "w-2.5 bg-white/30 hover:bg-white/50"
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  className={btnGhost}
+                  onClick={() => setI((v) => Math.max(0, v - 1))}
+                  disabled={i === 0}
+                >
+                  <ChevronLeft size={16} /> Prev
+                </button>
+                <button
+                  className={btnPrimary}
+                  onClick={() => (i === total - 1 ? onClose?.() : setI((v) => Math.min(total - 1, v + 1)))}
+                >
+                  {i === total - 1 ? "Done" : <>Next <ChevronRight size={16} /></>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
 function SessionSummary({ onExit }){
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="text-sm text-white/60 uppercase tracking-widest">Session Complete</div>
-      <div className="text-white/70 text-sm">Saved to leaderboard.</div>
+      <div className="
+      rounded-2xl border-2 border-dashed border-white/10 hover:border-white/20
+      bg-white/[0.02] text-white/60
+      p-6 flex flex-col items-center justify-center gap-2
+      transition-colors">
+              <div className="text-sm text-white/60 uppercase tracking-widest">Session Complete</div>
+
+              <div className="text-white/70 text-sm">Saved to leaderboard.</div>
+      </div>
+
       <button onClick={onExit} className={btnPrimary}>Back to Builder</button>
     </div>
   );
 }
 // ---- stats.js (or near your LeaderboardPanel) ----
-function buildTopicStats(board) {
-  // per topic arrays
-  const byTopic = new Map(); // topic -> entries[]
-  for (const e of board) {
-    for (const t of (e.topics || [])) {
+
+
+function computeRelative(topic, entry, baseline, weights = { wAcc: 1, wSpeed: 0.7 }) {
+  if (!baseline) return 0;
+
+  const entryAcc = smoothAcc(entry.correct ?? 0, entry.attempts ?? 0);
+  const accDelta = entryAcc - baseline.avgAcc;
+
+  const secDelta = (entry.avgSecPerQ ?? 0) - (baseline.avgSec || 1e-9);
+  let speedTerm = -secDelta / Math.max(baseline.avgSec || 1, 1e-9);
+  // clamp speed effect
+  speedTerm = Math.max(-1, Math.min(1, speedTerm));
+
+  return weights.wAcc * accDelta + weights.wSpeed * speedTerm;
+}
+
+// --- Global baselines across all sessions (your overall "normal") ---
+function computeGlobalBaselines(board){
+  const accs = board.map(entryAccOf).filter(Number.isFinite);
+  const secs = board.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
+
+  const globalAcc = mean(accs) || 0;  // 0..1
+  const globalSec = mean(secs) || 1;  // seconds per Q
+  return { globalAcc, globalSec };
+}
+
+// Group entries by topic (same as before)
+function groupByTopic(board){
+  const byTopic = new Map();
+  for (const e of board){
+    for (const t of (e.topics || [])){
       if (!byTopic.has(t)) byTopic.set(t, []);
       byTopic.get(t).push(e);
     }
   }
-
-  const baselines = new Map(); // topic -> {avgAcc, avgSec, avgScore, attempts}
-  for (const [topic, list] of byTopic) {
-    const n = list.length || 1;
-    const acc = list.reduce((s, e) => s + (e.accuracy ?? 0), 0) / n;
-    const sec = list.reduce((s, e) => s + (e.avgSecPerQ ?? 0), 0) / n;
-    const scr = list.reduce((s, e) => s + (e.score ?? 0), 0) / n;
-    const attempts = list.reduce((s, e) => s + (e.attempts ?? 0), 0);
-    baselines.set(topic, { avgAcc: acc, avgSec: sec, avgScore: scr, attempts, sessions: n });
-  }
-
-  // per-topic personal best
-  const bestByTopic = new Map(); // topic -> entry
-  for (const [topic, list] of byTopic) {
-    bestByTopic.set(topic, list.slice().sort((a,b)=>b.score-a.score)[0] ?? null);
-  }
-
-  return { byTopic, baselines, bestByTopic };
+  return byTopic;
 }
 
-function computeRelative(topic, entry, baseline, weights = { wAcc: 1, wSpeed: 0.7 }) {
-  if (!baseline) return 0;
-  const accDelta = (entry.accuracy ?? 0) - baseline.avgAcc;
-  const secDelta = (entry.avgSecPerQ ?? 0) - (baseline.avgSec || 1e-9); // + = slower
-  const speedTerm = -secDelta / Math.max(baseline.avgSec || 1, 1e-9);
-  return weights.wAcc * accDelta + weights.wSpeed * speedTerm;
-}
+// Main: per-topic summary + REL (relative strength index)
+function summarizeTopics(board, weights = { wAcc: 1, wSpeed: 0.7 }, prior = 1){
+  const { globalAcc, globalSec } = computeGlobalBaselines(board);
+  const byTopic = groupByTopic(board);
 
-function summarizeTopics(board) {
-  const { byTopic, baselines } = buildTopicStats(board);
   const topics = [];
-  for (const [topic, list] of byTopic) {
-    const base = baselines.get(topic);
-    // average relative over entries (with min attempts threshold)
-    const rels = list.map(e => computeRelative(topic, e, base));
-    const relAvg = rels.reduce((s,x)=>s+x,0)/(rels.length||1);
-    const totalAttempts = list.reduce((s,e)=>s+(e.attempts||0),0);
+  for (const [topic, list] of byTopic){
+    const n = list.length;
+
+    // Topic means
+    const accs = list.map(entryAccOf);
+    const secs = list.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
+
+    // Shrink small samples toward global baseline (Laplace-style)
+    // prior=1 adds one "pseudo" observation at the global mean
+    const topicAcc = (mean(accs) * n + globalAcc * prior) / (n + prior);
+    const topicSec = (mean(secs) * secs.length + globalSec * prior) / ((secs.length || 0) + prior);
+
+    // REL: higher is “stronger”
+    //   accuracy term: topicAcc - globalAcc
+    //   speed term:    faster-than-global => positive
+    let rel = weights.wAcc * (topicAcc - globalAcc)
+            + weights.wSpeed * ((globalSec - topicSec) / globalSec);
+    if (!Number.isFinite(rel)) rel = 0; // safety
+
+    // Keep it bounded for display sanity
+    rel = Math.max(-1, Math.min(1, rel));
+
+    const attempts = list.reduce((s, e) => s + (e.attempts || 0), 0);
+
     topics.push({
       topic,
-      attempts: totalAttempts,
-      sessions: list.length,
-      avgScore: base.avgScore,
-      avgAcc: base.avgAcc,
-      avgSec: base.avgSec,
-      weakIndex: relAvg, // lower = weaker
-      entries: list
+      attempts,
+      sessions: n,
+      avgScore: mean(list.map(e => e.score || 0)),
+      avgAcc: topicAcc,          // already shrunk
+      avgSec: topicSec,          // already shrunk
+      weakIndex: rel,            // <0 weaker than your overall, >0 stronger
+      entries: list,
     });
   }
+
   return topics;
 }
 
 
 function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
-  const [tab, setTab] = useState("overview"); // "overview" | "topics" | "sessions"
+  const TABS = ["overview", "topics", "sessions"];
+
+  const [tab, setTab] = useState("overview");
   const [topicFilter, setTopicFilter] = useState("ALL");
-  const [range, setRange] = useState("ALL"); // "7D" | "30D" | "ALL"
+  const [range, setRange] = useState("ALL");
+
+  // keep previous tab to compute direction
+  const prevTabRef = useRef(tab);
+  const [dir, setDir] = useState(0); // -1 = left, 1 = right, 0 = none
+
+  function changeTab(next) {
+    const from = prevTabRef.current;
+    const to = next;
+    const d =
+      TABS.indexOf(to) > TABS.indexOf(from) ? 1 :
+      TABS.indexOf(to) < TABS.indexOf(from) ? -1 : 0;
+    setDir(d);
+    setTab(to);
+    prevTabRef.current = to;
+  }
 
   const filteredBoard = useMemo(() => {
     // apply time range here if desired
@@ -1962,7 +2375,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-          <Trophy size={18}/> Performance
+          <Trophy size={18} font-semibold/> Performance
         </h2>
         <div className="flex items-center gap-2">
           <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
@@ -1971,18 +2384,45 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4">
-        {["overview","topics","sessions"].map(k => (
-          <button key={k}
-            className={`${btnGhost} ${tab===k?"ring-2 ring-emerald-400/60":""}`}
-            onClick={()=>setTab(k)}>
-            {k[0].toUpperCase()+k.slice(1)}
+        {["overview", "topics", "sessions"].map(k => (
+          <button
+            key={k}
+            className={`${btnGhost} ${tab === k ? "ring-2 ring-emerald-400/60" : ""}`}
+            onClick={() => changeTab(k)}
+          >
+            {k[0].toUpperCase() + k.slice(1)}
           </button>
         ))}
+
       </div>
 
-      {tab === "overview" && <OverviewTab board={filteredBoard} topicSummaries={topicSummaries} topicMap={topicMap} />}
-      {tab === "topics"   && <TopicsTab topicSummaries={topicSummaries} topicMap={topicMap} />}
-      {tab === "sessions" && <SessionsTab board={filteredBoard} topicMap={topicMap} highlightId={highlightId} />}
+      <div className="relative overflow-x-visible overflow-y-visible min-h-[15em]">
+        <AnimatePresence initial={false} custom={dir}>
+          <motion.div
+            key={tab}
+            custom={dir}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            variants={{
+              enter: (d) => ({ x: d === 0 ? 0 : (d > 0 ? 40 : -40), opacity: 0 }),
+              center: { x: 0, opacity: 1, transition: { duration: 0.18, ease: "easeOut" } },
+              exit: (d) => ({ x: d > 0 ? -40 : 40, opacity: 0, transition: { duration: 0.16, ease: "easeIn" } })
+            }}
+          >
+            {tab === "overview" && (
+              <OverviewTab board={filteredBoard} topicSummaries={topicSummaries} topicMap={topicMap} />
+            )}
+            {tab === "topics" && (
+              <TopicsTab topicSummaries={topicSummaries} topicMap={topicMap} />
+            )}
+            {tab === "sessions" && (
+              <SessionsTab board={filteredBoard} topicMap={topicMap} highlightId={highlightId} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
     </motion.div>
   );
 }
@@ -1992,21 +2432,41 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
   const avgAcc   = board.reduce((s,e)=>s+(e.accuracy||0),0)/(n||1);
   const avgSec   = Math.round(10*board.reduce((s,e)=>s+(e.avgSecPerQ||0),0)/(n||1))/10;
 
-  const withAttempts = topicSummaries.filter(t=>t.attempts>=10); // threshold
-  const weakest = [...withAttempts].sort((a,b)=>a.weakIndex-b.weakIndex).slice(0,3);
-  const strongest = [...withAttempts].sort((a,b)=>b.weakIndex-a.weakIndex).slice(0,3);
+  // REL can be negative, so we just sort naturally
+// Let *all* finite RELs compete, then prefer well-sampled items as a tiebreaker.
+// This ensures negative REL topics show up even with low attempts.
+  const finite = topicSummaries.filter(t => Number.isFinite(t.weakIndex));
+
+  // Weakest: lowest REL first
+  const weakest = [...finite]
+    .sort((a, b) =>
+      (a.weakIndex - b.weakIndex) || ((b.attempts || 0) - (a.attempts || 0))
+    )
+    .slice(0, 3);
+
+  // Strongest: highest REL first
+  const strongest = [...finite]
+    .sort((a, b) =>
+      (b.weakIndex - a.weakIndex) || ((b.attempts || 0) - (a.attempts || 0))
+    )
+    .slice(0, 3);
 
   return (
     <div className="space-y-4">
-      {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <KPI label="Sessions" value={n} />
-        <KPI label="Avg score" value={avgScore} />
-        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
+        <KPI
+          label="Avg score"
+          value={
+            <>
+              {avgScore}
+              <span className="text-xs text-white/50"> /1000</span>
+            </>
+          }
+        />        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
         <KPI label="Avg sec / Q" value={avgSec} />
       </div>
 
-      {/* Weakest / Strongest */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <TopicList title="Weakest topics" items={weakest} topicMap={topicMap} tone="weak" />
         <TopicList title="Strongest topics" items={strongest} topicMap={topicMap} tone="strong" />
@@ -2014,6 +2474,8 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
     </div>
   );
 }
+
+
 
 /* ===================== Topics Tab (bar leaderboard w/ medals) ===================== */
 function MedalBadge({ rank }) {
@@ -2044,10 +2506,10 @@ function MedalBadge({ rank }) {
       fg: "text-black/80",
     },
     default: {
-      ring: "ring-emerald-300/60",
+      ring: "ring-grey-300/60",
       style: {
         backgroundImage:
-          "conic-gradient(from 210deg at 50% 50%, #34D399, #10B981, #06B6D4, #34D399)",
+          "conic-gradient(from 210deg at 50% 50%, #8b92aaff, #87a58bff, #897e91ff, #738e85ff)",
       },
       fg: "text-black/80",
     },
@@ -2087,12 +2549,15 @@ function TopicsTab({ topicSummaries, topicMap }) {
   // Sort: all based on REL, with requested variants
   const sorted = useMemo(() => {
     const arr = [...topicSummaries];
-    if (sort === "weak")      arr.sort((a, b) => (a.weakIndex ?? 0) - (b.weakIndex ?? 0));   // low → high
-    if (sort === "strong")    arr.sort((a, b) => (b.weakIndex ?? 0) - (a.weakIndex ?? 0));   // high → low
-    // "practiced": rank attempts by REL → primary: REL (desc), tiebreaker: attempts (desc)
-    if (sort === "practiced") arr.sort((a, b) =>
-      (b.weakIndex ?? 0) - (a.weakIndex ?? 0) || (b.attempts || 0) - (a.attempts || 0)
-    );
+    if (sort === "weak")
+      arr.sort((a, b) => (Number.isFinite(a.weakIndex) ? a.weakIndex : Infinity) - (Number.isFinite(b.weakIndex) ? b.weakIndex : Infinity));
+    if (sort === "strong")
+      arr.sort((a, b) => (Number.isFinite(b.weakIndex) ? b.weakIndex : -Infinity) - (Number.isFinite(a.weakIndex) ? a.weakIndex : -Infinity));
+    if (sort === "practiced")
+      arr.sort((a, b) =>
+        ((Number.isFinite(b.weakIndex) ? b.weakIndex : -Infinity) - (Number.isFinite(a.weakIndex) ? a.weakIndex : -Infinity)) ||
+        ((b.attempts || 0) - (a.attempts || 0))
+      );
     if (sort === "recent")    arr.sort((a, b) =>
       (new Date(b.entries?.[0]?.when || 0)) - (new Date(a.entries?.[0]?.when || 0))
     );
@@ -2108,11 +2573,11 @@ function TopicsTab({ topicSummaries, topicMap }) {
   return (
     <div className="space-y-3">
       {/* Controls — ordered: strong > weak > most practiced > most recent */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 pb-1">
         {[
           ["strong", "Strong first"],
           ["weak", "Weak first"],
-          ["practiced", "Attempts (by REL)"],
+          ["practiced", "Most Practiced"],
           ["recent", "Most recent"],
         ].map(([k, label]) => (
           <button
@@ -2126,7 +2591,7 @@ function TopicsTab({ topicSummaries, topicMap }) {
       </div>
 
       <div className="text-[11px] text-white/45">
-        REL bar (single, neutral light → bright). Higher = stronger vs your baseline.
+        REL bar - the higher the score, the stronger the topic against other topics.
       </div>
 
       <div className={`${cardBase} divide-y divide-white/5`}>
@@ -2163,8 +2628,13 @@ function TopicRowBar({ index, label, rel, relPct, sec, attempts, sessions }) {
             {/* Full topic name — allow wrapping */}
             <div className="font-semibold leading-tight break-words">{label}</div>
             <div className="text-[11px] text-white/50">
-              REL {rel >= 0 ? "+" : ""}{rel.toFixed(2)} · {sig3(sec)}s/q · {attempts} attempts · {sessions} sessions
+              REL {rel >= 0 ? "+" : ""}{rel.toFixed(2)}
+              {" · "}{sig3(sec)}s/q
+              {" · "}{attempts} attempts
+              {" · "}{sessions} sessions
+              {attempts < 5 && <span className="ml-1 text-white/35">(low data)</span>}
             </div>
+
           </div>
         </div>
       </div>
@@ -2190,7 +2660,19 @@ function TopicRowBar({ index, label, rel, relPct, sec, attempts, sessions }) {
 /* ------------------ Helpers for visual scaling & color ------------------ */
 
 // Map attempts count (0..max) to a % width (6..100) so even 1 attempt is visible
-// ---- Visual helpers (drop-in) ----
+// ---- Visual helpers (drop-in) ----\
+// Laplace smoothing: accuracy = (correct + 1) / (attempts + 2)
+// Laplace-smoothed accuracy for an entry
+function entryAccOf(e) {
+  const c = Number(e?.correct || 0);
+  const a = Number(e?.attempts || 0);
+  return (c + 1) / (a + 2);
+}
+
+function smoothAcc(correct, attempts) {
+  return (Number(correct || 0) + 1) / (Number(attempts || 0) + 2);
+}
+
 function sig3(n) {
   if (!Number.isFinite(n)) return "--";
   // toPrecision → back to Number to avoid "1.23e+4"
@@ -2225,17 +2707,47 @@ function barColor(pct) {
 /* ===================== Sessions Tab (ranked list) ===================== */
 
 function SessionsTab({ board, topicMap, highlightId }) {
-  // Highest score first
-  const ranked = useMemo(
-    () => board.slice().sort((a,b)=> (b.score||0) - (a.score||0)),
-    [board]
-  );
+  const [sortBy, setSortBy] = React.useState("attempts"); // "attempts" | "score" | "date"
+
+  const ranked = React.useMemo(() => {
+    const arr = board.slice();
+    if (sortBy === "attempts") arr.sort((a,b) => (b.attempts||0) - (a.attempts||0));
+    else if (sortBy === "score") arr.sort((a,b) => (b.score||0) - (a.score||0));
+    else if (sortBy === "date")  arr.sort((a,b) => new Date(b.when) - new Date(a.when));
+    return arr;
+  }, [board, sortBy]);
 
   const [count, setCount] = useState(20);
   const show = ranked.slice(0, count);
 
   return (
     <div className="space-y-2">
+      {/* Sort controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] text-white/45">Sort:</span>
+        <button
+          className={`${btnGhost} ${sortBy==="attempts" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={()=>setSortBy("attempts")}
+          title="Most practiced (highest attempts first)"
+        >
+          Most practiced
+        </button>
+        <button
+          className={`${btnGhost} ${sortBy==="score" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={()=>setSortBy("score")}
+          title="Highest score first"
+        >
+          Score
+        </button>
+        <button
+          className={`${btnGhost} ${sortBy==="date" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={()=>setSortBy("date")}
+          title="Most recent first"
+        >
+          Recent
+        </button>
+      </div>
+
       {show.length===0 && <div className="text-white/50 text-sm">No entries yet.</div>}
 
       <div className="grid grid-cols-1 gap-2">
@@ -2258,6 +2770,7 @@ function SessionsTab({ board, topicMap, highlightId }) {
     </div>
   );
 }
+
 
 function SessionRow({ rank, entry, topicMap, highlight=false }) {
   const date = new Date(entry.when);
@@ -2284,7 +2797,7 @@ function SessionRow({ rank, entry, topicMap, highlight=false }) {
 
           <div className="min-w-0">
             <div className="text-base sm:text-lg font-semibold leading-tight">
-              Score {entry.score}
+              {entry.score}<span className="text-xs text-white/50"> /1000</span>
             </div>
             <div className="text-[11px] sm:text-xs text-white/60 break-words">
               {topicsLabel}
@@ -2333,7 +2846,7 @@ function TopicList({ title, items, topicMap, tone }) {
           <div key={t.topic} className="flex items-center justify-between">
             <div className="truncate">{topicMap.get(t.topic)?.label || t.topic}</div>
             <div className={`text-xs ${tone==="weak"?"text-red-300":"text-emerald-300"}`}>
-              {tone==="weak" ? "↓" : "↑"} {(t.weakIndex>=0?"+":"") + t.weakIndex.toFixed(2)}
+              {tone==="weak" ? "" : ""} {(t.weakIndex>=0?"":"") + t.weakIndex.toFixed(2)}
             </div>
           </div>
         ))}
