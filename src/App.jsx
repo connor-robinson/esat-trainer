@@ -1,4 +1,3 @@
-import { Analytics } from "@vercel/analytics/next"
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
