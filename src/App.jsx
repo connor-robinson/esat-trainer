@@ -120,35 +120,36 @@ const PRESETS = [
 const TUTORIAL_SLIDES = [
   {
     title: "Build a session",
-    video: "/tutorial/dragging.mp4", // replace with your poster or thumbnail
-    caption: "Drag topics from the left into the Session Folder. Click “+” to add quickly without dragging."
+    video: "/tutorial/dragging.mp4",
+    caption: "Pick topics from the left and drag them into the Session Folder. Use the “+” button for a quick add without dragging."
   },
   {
     title: "Flash timer",
     video: "/tutorial/flashtimer.mp4",
-    caption: "Add the Flash Timer and set seconds inside the folder to hide questions for fast recall."
+    caption: "Add a Flash Timer inside the folder and set the seconds. It hides questions until time’s up so you can test quick recall."
   },
   {
-    title: "Save a preset", 
+    title: "Save a preset",
     video: "/tutorial/savedsessions.mp4",
-    caption: "Save a certain combination of topics so you can start a session in the future quickly."
+    caption: "Save your current set of topics as a preset. Next time, load it instantly without rebuilding the session from scratch."
   },
   {
-    title: "Start a session", 
-    video: "/tutorial/startsession.mp4",
-    caption: "Set the timer, and do as many questions as you can within that time."
+    title: "Start a session",
+    video: "/tutorial/loadsession.mp4",
+    caption: "Set your timer, hit Start, and answer as many questions as you can within that time window."
   },
   {
     title: "During practice",
     video: "/tutorial/symbolbar.mp4",
-    caption: "Type answers, use the mini symbols, press Enter to check. Wrong → Check again → Reveal → Next."
+    caption: "Type answers directly, use the mini symbols for maths, and press Enter to check. Wrong → try again → reveal → move on."
   },
   {
     title: "Performance",
     video: "/tutorial/performance.mp4",
-    caption: "Track progress by topic. REL bar shows stronger/weaker vs your own baseline."
+    caption: "See how you’re doing by topic. The REL bar compares each score against your own baseline, so you know what’s strong and what needs more work."
   },
 ];
+
 
 // ---------- Local storage ----------
 const LS_KEY = "esat_trainer_sessions_v2";
