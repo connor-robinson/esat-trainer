@@ -1,5 +1,5 @@
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -1621,7 +1621,8 @@ const startBlockReason = !folderTopics.length
             setBoard={setBoard}
             topicMap={topicMap}
             highlightId={lastEntryId}
-          />        
+          />       
+          <SuggestionsPanel /> 
           </div>
       </div>
 
@@ -1646,6 +1647,38 @@ function PanelGloss(){
     <div className="pointer-events-none absolute -top-24 -left-16 h-40 w-72 -rotate-12 bg-gradient-to-b from-white/10 to-transparent blur-2xl" />
     <div className="pointer-events-none absolute -bottom-28 -right-10 h-40 w-72 rotate-12 bg-gradient-to-b from-white/5 to-transparent blur-2xl" />
   </>);
+}
+
+function SuggestionsPanel() {
+  return (
+    <div className={`${panel} mt-6`}>
+       <div className="flex items-center gap-2 mb-2">
+        <Send size={18} className="text-white/70 relative" />
+        <h2 className="text-white/70 font-semibold tracking-tight">Suggestions</h2>
+      </div>
+      <form
+        action="https://formspree.io/f/mzzjpegb" // ⬅️ replace with your Formspree endpoint
+        method="POST"
+        className="flex flex-col gap-2"
+      >
+        <textarea
+          name="message"
+          placeholder="Your suggestion..."
+          required
+          className="
+    rounded-xl bg-white/5 border border-white/10 p-2 text-sm text-white/90 
+    placeholder:text-white/40 min-h-[80px]
+    focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400/30
+  "/>
+        <button type="submit" className={btnGhost}>
+          Send
+        </button>
+      </form>
+      <p className="text-xs text-white/40 mt-2">
+        This is a relatively new concept... Any small details would be appreciated!
+      </p>
+    </div>
+  );
 }
 
 
