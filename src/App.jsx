@@ -1240,6 +1240,8 @@ function computeScore({ correct, attempts, durationSec }) {
 
 // ---------- App ----------
 export default function App(){
+  console.log("VITE_SUPABASE_URL =", import.meta.env.VITE_SUPABASE_URL);
+  console.log("VITE_SUPABASE_ANON_KEY =", import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0,8) + "…");
   const { user, loading } = useAuth(); 
   const [authBusy, setAuthBusy] = useState(false);
   const [view, setView] = useState("builder");
