@@ -1,3 +1,10 @@
+import { supabase } from "./lib/supabase";
+import { useAuth } from "./hooks/useAuth";
+import { LogOut, LogIn } from "lucide-react";
+import { saveSessionEntry, listSessionEntries } from "./data/sessions";
+import { hasRunOnce, markRunOnce } from "./lib/once";
+import { createPreset, listPresets, deletePreset } from "./data/presets";
+import PortalTooltip from "./components/PortalTooltip";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
@@ -12,6 +19,8 @@ import { motion, AnimatePresence } from "framer-motion";
   - Added mini symbols inserter during sessions (√, π, ^, (), ×, ÷, /)
   - Parser: accepts sqrt(), √, brackets, caret ^, pi/π, and also plain 'sqrt2' → Math.sqrt(2)
 */
+// create this file if you used 7a
+
 function TopicRow({ id, label, onAdd }) {
   const { attributes, listeners, setNodeRef, transform } =
     useDraggable({ id: `src-${id}` });
@@ -1231,7 +1240,48 @@ function computeScore({ correct, attempts, durationSec }) {
 
 // ---------- App ----------
 export default function App(){
+  const { user, loading } = useAuth(); 
+  const [authBusy, setAuthBusy] = useState(false);
   const [view, setView] = useState("builder");
+
+  useEffect(() => {
+    (async () => {
+      if (!user) return;                               // only when logged in
+      const FLAG = "migrated_local_sessions_v1";
+      if (hasRunOnce(FLAG)) return;                    // already migrated
+
+      // 1) Pull local leaderboard entries
+      const raw = localStorage.getItem("esat_trainer_leaderboard_v2");
+      const localEntries = raw ? JSON.parse(raw) : [];
+
+      if (Array.isArray(localEntries) && localEntries.length) {
+        // 2) Save in small batches to Supabase
+        for (const entry of localEntries) {
+          try {
+            await saveSessionEntry(entry);
+          } catch (e) {
+            console.error("Failed to upload an entry:", e);
+          }
+        }
+      }
+      markRunOnce(FLAG);                               // never upload again
+    })();
+  }, [user?.id]);
+
+    useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        try {
+          const rows = await listSessionEntries();
+          const cloudBoard = rows.map(r => r.payload);
+          setBoard(cloudBoard);
+        } catch (e) {
+          console.error("Load cloud board failed:", e);
+        }
+      }
+    })();
+  }, [user?.id]);
   const [folderTopics, setFolderTopics] = useState([]); // ids
   const [activeId, setActiveId] = useState(null);
   const [durationMin, setDurationMin] = useState(1);
@@ -1253,17 +1303,32 @@ export default function App(){
   }
   function onDragStart(e){ setActiveId(e.active.id); }
 
-  function saveSession(name){
-    if (!name) return;
-    const compact = Array.from(new Set(folderTopics));
-    const entry = {
-      name,
-      topics: compact,
-      // store the value only if flash_timer is in the session
-      ...(compact.includes("flash_timer") ? { flashSeconds: Number(flashSeconds) || 0 } : {})
-    };
-    setSessions(prev => [entry, ...prev].slice(0, 24));
-  }
+function saveSession(name){
+  if (!name) return;
+  const compact = Array.from(new Set(folderTopics));
+  const entry = {
+    name,
+    topics: compact,
+    ...(compact.includes("flash_timer") ? { flashSeconds: Number(flashSeconds) || 0 } : {})
+  };
+
+  // local (keep)
+  setSessions(prev => [entry, ...prev].slice(0, 24));
+
+  // cloud (if logged in)
+  supabase.auth.getUser().then(async ({ data }) => {
+    if (!data.user) return;
+    try {
+      await createPreset({
+        name: entry.name,
+        topics: entry.topics,
+        flashSeconds: entry.flashSeconds
+      });
+    } catch (e) {
+      console.error("Preset save failed:", e);
+    }
+  });
+}
 
   function loadPreset(p){ setFolderTopics([...p.topics]); }
   function loadSession(s){
@@ -1284,7 +1349,36 @@ export default function App(){
             <button className={btnGhost} onClick={() => setShowTutorial(true)}>
               <BookOpen size={16} /> Tutorial
             </button>
+
+            {/* Auth buttons */}
+            {loading ? null : user ? (
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-white/50 max-w-[12rem] truncate">
+                  {user.user_metadata?.name || user.email}
+                </div>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className={btnGhost}
+                  title="Sign out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            ) : (
+              <button
+                className={btnGhost}
+                onClick={() =>
+                  supabase.auth.signInWithOAuth({
+                    provider: "google",
+                    options: { redirectTo: window.location.origin }
+                  })
+                }
+              >
+                <LogIn size={16} /> Sign in
+              </button>
+            )}
           </div>
+
         </div>
       </div>
 
@@ -1310,9 +1404,22 @@ export default function App(){
             flashSeconds={flashSeconds}
             includesFlash={folderTopics.includes("flash_timer")}
             onExit={()=>setView("builder")}
-            onFinish={(entry)=>{
-              setBoard(prev => [entry, ...prev].slice(0,200));
-              setLastEntryId(entry.id); }} 
+              onFinish={async (entry) => {
+                // local (existing)
+                setBoard(prev => [entry, ...prev].slice(0, 200));
+                setLastEntryId(entry.id);
+
+                // cloud (only if signed in)
+                const { data } = await supabase.auth.getUser();
+                if (data.user) {
+                  try {
+                    await saveSessionEntry(entry); // you can store entry directly as payload
+                  } catch (e) {
+                    console.error("Cloud save failed:", e);
+                  }
+                }
+              }}
+
               />
               
         )}
@@ -1345,19 +1452,8 @@ function BuilderView({
   lastEntryId
 }) {
 
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (state === "finished") return;
-        if (phase === "go") doCheck();
-        else if (phase === "reveal") revealAnswer();
-        else if (phase === "next") next();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+
+
 
   const [topicQuery, setTopicQuery] = useState("");
   const [triedStart, setTriedStart] = useState(false);
@@ -2438,7 +2534,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-          <Trophy size={18} font-semibold/> Performance
+          <Trophy className="size={18} font-semibold"/> Performance
         </h2>
         <div className="flex items-center gap-2">
           <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
@@ -2520,14 +2616,14 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
         <KPI label="Sessions" value={n} />
         <KPI
           label={
-            <div className="inline-flex items-center gap-1 leading-none overflow-visible">
+            <div className="inline-flex items-center gap-1 leading-none">
               <span>Avg score</span>
-              <Tooltip text="Measurement of accuracy + pace, compared to your usual pace, scaled out of 1000.">
+              <PortalTooltip text={"Your score = 60% accuracy + 40% speed, compared to your usual pace.\n“Avg score” is the mean of all your sessions, scaled out of 1000."}>
                 <HelpCircle
                   size={12}
                   className="text-white/40 hover:text-white/70 cursor-help relative top-[0.5px]"
                 />
-              </Tooltip>
+              </PortalTooltip>
             </div>
           }
           value={
