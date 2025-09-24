@@ -238,7 +238,7 @@ function formatFraction(p, q){
 }
 // Parser helpers (accepts fractions, sqrt(), π, etc.)
 const UNDEF_SET = new Set([
-  "undef", "undefined", "dne", "doesnotexist", "noanswer", "novalue",
+  "undef", "undefined", "e", "doesnotexist", "noanswer", "novalue",
   "no value", "n/a", "nan", "∞", "-∞", "infinity", "-infinity", "inf", "-inf"
 ]);
 
@@ -1249,6 +1249,7 @@ export default function App(){
   console.log("VITE_SUPABASE_URL =", import.meta.env.VITE_SUPABASE_URL);
   console.log("VITE_SUPABASE_ANON_KEY =", import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0,8) + "…");
   const { user, loading } = useAuth(); 
+  
   const [authBusy, setAuthBusy] = useState(false);
   const [view, setView] = useState("builder");
 
@@ -1362,7 +1363,7 @@ function saveSession(name){
             {loading ? null : user ? (
               <div className="flex items-center gap-2">
                 {/* Label that turns editable on click */}
-                {!dn.editing ? (
+                {!display.editing ? (
                   <button
                     onClick={() => dn.setEditing(true)}
                     className="inline-flex items-center h-9 rounded-2xl px-3 bg-white/5 border border-white/10 text-sm text-white/80 hover:bg-white/10"
