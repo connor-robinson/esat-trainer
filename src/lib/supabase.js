@@ -1,10 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url  = import.meta.env.VITE_SUPABASE_URL?.trim();
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-
-// TEMP: add these logs to see what's missing in prod
-if (!url)  console.error("Missing env: VITE_SUPABASE_URL");
-if (!anon) console.error("Missing env: VITE_SUPABASE_ANON_KEY");
+const url  = "https://bcbttpsokwoapjypwwwq.supabase.co";
+const anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjYnR0cHNva3dvYXBqeXB3d3dxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2NDY3NjgsImV4cCI6MjA3NDIyMjc2OH0.wqyQBq5xL3Q0J7iOLYtNgGk1aWQBqrfT2ADVD6VHi78";
 
 export const supabase = createClient(url, anon);
