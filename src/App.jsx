@@ -7,7 +7,7 @@ import { hasRunOnce, markRunOnce } from "./lib/once";
 import { createPreset, listPresets, deletePreset } from "./data/presets";
 import PortalTooltip from "./components/PortalTooltip";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { LogOut, LogIn, Pencil, Check, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { LogOut, LogIn, Pencil, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
