@@ -1500,6 +1500,18 @@ function saveSession(name){
                 if (data.user) {
                   try {
                     await saveSessionEntry(entry); // you can store entry directly as payload
+                    await supabase.from("leaderboard").insert([{
+                      user_id: data.user.id,
+                      display_name: data.user.user_metadata?.display_name ?? data.user.email?.split("@")[0],
+                      score: entry.score,
+                      accuracy: entry.accuracy,
+                      attempts: entry.attempts,
+                      correct: entry.correct,
+                      duration_sec: entry.duration_sec,
+                      topics: entry.topics, // make sure this is an array
+                      created_at: new Date().toISOString()
+                    }]);
+
                   } catch (e) {
                     console.error("Cloud save failed:", e);
                   }
