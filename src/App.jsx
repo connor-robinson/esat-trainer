@@ -1381,10 +1381,10 @@ function saveSession(name){
     if (!data.user) return;
     try {
       await supabase.from("profiles").upsert({
-        user_id: data.user.id,
-        display_name: name,   // the new name user typed
-        updated_at: new Date().toISOString()
-      });
+      user_id: data.user.id,
+      display_name: name,
+      updated_at: new Date().toISOString()
+    });
       await createPreset({
         name: entry.name,
         topics: entry.topics,
