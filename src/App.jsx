@@ -267,38 +267,7 @@ function answersMatch(user, correct) {
 
 
 // ---- One true normalizer → JS-safe expression -----------------
-function normalizeToJS(expr) {
-  if (expr == null) return "";
-  let s = String(expr);
 
-  // basic cleanups
-  s = s.replace(/[−—]/g, "-").replace(/\s+/g, "");
-  s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
-
-  // sqrt forms
-  s = s.replace(/√\s*\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`);
-  s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, (_, inner) => `Math.sqrt(${inner})`);
-  s = s.replace(/\bsqrt\s*\(([^)]+)\)/gi, (_, inner) => `Math.sqrt(${inner})`);
-  s = s.replace(/\bsqrt(\d+(?:\.\d+)?)/gi, (_, num) => `Math.sqrt(${num})`);
-
-  // constants
-  s = s.replace(/\bpi\b/gi, "Math.PI").replace(/π/gi, "Math.PI");
-
-  // user typed "math." → "Math."
-  s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
-
-  // ---- FULL superscript support (0–9 and minus) ----
-  const SUP_TO_ASC = { "⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9","⁻":"-" };
-  s = s.replace(/([A-Za-z0-9_.\)])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_, base, sup) => {
-    const dec = sup.split("").map(ch => SUP_TO_ASC[ch] ?? "").join("");
-    return `(${base})**${dec}`;
-  });
-
-  // guard against accidental double prefixes
-  s = s.replace(/(?:Math\.){2,}/g, "Math.");
-
-  return s;
-}
 
 
 // numeric evaluator using the normalizer
