@@ -276,7 +276,7 @@ function normalizeToJS(expr) {
   s = s.replace(/[−—]/g, "-").replace(/\s+/g, "");
   s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
 
-  // sqrt forms: √(x), √x, sqrt(x), sqrt2
+  // sqrt forms
   s = s.replace(/√\s*\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`);
   s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, (_, inner) => `Math.sqrt(${inner})`);
   s = s.replace(/\bsqrt\s*\(([^)]+)\)/gi, (_, inner) => `Math.sqrt(${inner})`);
@@ -285,18 +285,22 @@ function normalizeToJS(expr) {
   // constants
   s = s.replace(/\bpi\b/gi, "Math.PI").replace(/π/gi, "Math.PI");
 
-  // user typed "math." (lowercase) → "Math."
+  // user typed "math." → "Math."
   s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
 
-  // superscripts
-  s = s.replace(/([A-Za-z0-9_.\)])²/g, "($1)**2");
-  s = s.replace(/([A-Za-z0-9_.\)])³/g, "($1)**3");
+  // ---- FULL superscript support (0–9 and minus) ----
+  const SUP_TO_ASC = { "⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9","⁻":"-" };
+  s = s.replace(/([A-Za-z0-9_.\)])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_, base, sup) => {
+    const dec = sup.split("").map(ch => SUP_TO_ASC[ch] ?? "").join("");
+    return `(${base})**${dec}`;
+  });
 
-  // guard against accidental double prefixes: Math.Math. → Math.
+  // guard against accidental double prefixes
   s = s.replace(/(?:Math\.){2,}/g, "Math.");
 
   return s;
 }
+
 
 // numeric evaluator using the normalizer
 function tryNumeric(value) {
@@ -356,6 +360,38 @@ function equalish(userInput, expected){
 const CALC_IDS = new Set(CATEGORIES.CALCULATION.map(t=>t.id));
 const isCalc = (id)=> CALC_IDS.has(id);
 // ---------- MathJax helpers ----------
+function normalizeToJS(expr) {
+  if (expr == null) return "";
+  let s = String(expr);
+
+  // basic cleanups
+  s = s.replace(/[−—]/g, "-").replace(/\s+/g, "");
+  s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
+
+  // sqrt forms
+  s = s.replace(/√\s*\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/\bsqrt\s*\(([^)]+)\)/gi, (_, inner) => `Math.sqrt(${inner})`);
+  s = s.replace(/\bsqrt(\d+(?:\.\d+)?)/gi, (_, num) => `Math.sqrt(${num})`);
+
+  // constants
+  s = s.replace(/\bpi\b/gi, "Math.PI").replace(/π/gi, "Math.PI");
+
+  // user typed "math." → "Math."
+  s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
+
+  // ---- FULL superscript support (0–9 and minus) ----
+  const SUP_TO_ASC = { "⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9","⁻":"-" };
+  s = s.replace(/([A-Za-z0-9_.\)])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_, base, sup) => {
+    const dec = sup.split("").map(ch => SUP_TO_ASC[ch] ?? "").join("");
+    return `(${base})**${dec}`;
+  });
+
+  // guard against accidental double prefixes
+  s = s.replace(/(?:Math\.){2,}/g, "Math.");
+
+  return s;
+}
 
 // convert your plain typing to a *simple* LaTeX for preview
 function toTexFromPlain(s) {
@@ -2605,7 +2641,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
 }
 function OverviewTab({ board, topicSummaries, topicMap }) {
   const n = board.length;
-  const avgScore = Math.round(board.reduce((s,e)=>s+(e.score||0),0)/(n||1));
+  const avgScore = robustAverageScore(board);
   const avgAcc   = board.reduce((s,e)=>s+(e.accuracy||0),0)/(n||1);
   const avgSec   = Math.round(10*board.reduce((s,e)=>s+(e.avgSecPerQ||0),0)/(n||1))/10;
 
@@ -2891,6 +2927,29 @@ function barColor(pct) {
   return                 pick([16,185,129],[20,184,166],  (x-0.85)/0.15);    // emerald → teal
 }
 
+function quartile(sorted, p) {
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+function robustAverageScore(board) {
+  const vals = board.map(e => e?.score).filter(v => Number.isFinite(v));
+  if (vals.length === 0) return 0;
+  if (vals.length < 5) return Math.round(vals.reduce((s,v)=>s+v,0)/vals.length);
+
+  const sorted = [...vals].sort((a,b) => a - b);
+  const q1 = quartile(sorted, 0.25);
+  const q3 = quartile(sorted, 0.75);
+  const iqr = q3 - q1;
+  const lo = q1 - 1.5 * iqr;
+  const hi = q3 + 1.5 * iqr;
+
+  const filtered = vals.filter(v => v >= lo && v <= hi);
+  const base = filtered.length ? filtered : vals;
+  return Math.round(base.reduce((s,v)=>s+v,0)/base.length);
+}
 
 /* ===================== Sessions Tab (ranked list) ===================== */
 
