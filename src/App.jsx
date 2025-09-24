@@ -1,6 +1,8 @@
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
 import { LogOut, LogIn } from "lucide-react";
+import { useDisplayName } from "./hooks/useDisplayName";
+
 import { saveSessionEntry, listSessionEntries } from "./data/sessions";
 import { hasRunOnce, markRunOnce } from "./lib/once";
 import { createPreset, listPresets, deletePreset } from "./data/presets";
@@ -1246,6 +1248,7 @@ export default function App(){
   const [authBusy, setAuthBusy] = useState(false);
   const [view, setView] = useState("builder");
 
+  const display = useDisplayName(user);
   useEffect(() => {
     (async () => {
       if (!user) return;                               // only when logged in
@@ -1352,18 +1355,29 @@ function saveSession(name){
               <BookOpen size={16} /> Tutorial
             </button>
 
-            {/* Auth buttons */}
             {loading ? null : user ? (
               <div className="flex items-center gap-2">
-                <div className="text-xs text-white/50 max-w-[12rem] truncate">
-                  {user.user_metadata?.name || user.email}
+                {/* Editable display name styled like your ghost buttons */}
+                <div className="inline-flex items-center rounded-2xl bg-white/5 border border-white/10 px-3 h-9">
+                  <input
+                    value={display.name}
+                    onChange={(e) => display.setName(e.target.value)}
+                    placeholder="Display name"
+                    className="bg-transparent outline-none text-sm text-white/90 placeholder:text-white/40 w-40"
+                    aria-label="Display name"
+                  />
+                  {display.saving ? (
+                    <span className="ml-2 text-xs text-white/50">Saving…</span>
+                  ) : null}
                 </div>
+
                 <button
                   onClick={() => supabase.auth.signOut()}
                   className={btnGhost}
                   title="Sign out"
                 >
                   <LogOut size={16} />
+                  Leave
                 </button>
               </div>
             ) : (
@@ -1372,7 +1386,8 @@ function saveSession(name){
                 onClick={() =>
                   supabase.auth.signInWithOAuth({
                     provider: "google",
-                    options: { redirectTo: "https://nocalc.xyz" } 
+                    // let Supabase use its Site URL, or set an absolute URL:
+                    // options: { redirectTo: "https://nocalc.xyz" }
                   })
                 }
               >
@@ -1380,6 +1395,7 @@ function saveSession(name){
               </button>
             )}
           </div>
+
 
         </div>
       </div>
@@ -1802,7 +1818,7 @@ function SuggestionsPanel() {
         </button>
       </form>
       <p className="text-xs text-white/40 mt-2">
-        This is a relatively new concept... Any small details would be appreciated!
+        This is a relatively new concept... Any small improvements would be appreciated!
       </p>
     </div>
   );
