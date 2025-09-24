@@ -1372,6 +1372,7 @@ function saveSession(name){
                 onClick={() =>
                   supabase.auth.signInWithOAuth({
                     provider: "google",
+                    options: { redirectTo: "https://nocalc.xyz" } 
                   })
                 }
               >
