@@ -1,6 +1,5 @@
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
-import { LogOut, LogIn } from "lucide-react";
 import { useDisplayName } from "./hooks/useDisplayName";
 
 import { saveSessionEntry, listSessionEntries } from "./data/sessions";
@@ -8,7 +7,7 @@ import { hasRunOnce, markRunOnce } from "./lib/once";
 import { createPreset, listPresets, deletePreset } from "./data/presets";
 import PortalTooltip from "./components/PortalTooltip";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { LogOut, LogIn, Pencil, Check, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, X, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -1393,27 +1392,56 @@ function saveSession(name){
 
             {loading ? null : user ? (
               <div className="flex items-center gap-2">
-                {/* Editable display name styled like your ghost buttons */}
-                <div className="inline-flex items-center rounded-2xl bg-white/5 border border-white/10 px-3 h-9">
-                  <input
-                    value={display.name}
-                    onChange={(e) => display.setName(e.target.value)}
-                    placeholder="Display name"
-                    className="bg-transparent outline-none text-sm text-white/90 placeholder:text-white/40 w-40"
-                    aria-label="Display name"
-                  />
-                  {display.saving ? (
-                    <span className="ml-2 text-xs text-white/50">Saving…</span>
-                  ) : null}
-                </div>
+                {/* Label that turns editable on click */}
+                {!dn.editing ? (
+                  <button
+                    onClick={() => dn.setEditing(true)}
+                    className="inline-flex items-center h-9 rounded-2xl px-3 bg-white/5 border border-white/10 text-sm text-white/80 hover:bg-white/10"
+                    title="Edit display name"
+                  >
+                    <span className="truncate max-w-[10rem]">{dn.name || "Set name"}</span>
+                    <Pencil size={14} className="ml-2 opacity-60" />
+                  </button>
+                ) : (
+                  <div className="inline-flex items-center h-9 rounded-2xl px-2 bg-white/5 border border-white/10">
+                    <input
+                      autoFocus
+                      value={dn.name}
+                      onChange={(e) => dn.setName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") dn.save(dn.name);
+                        if (e.key === "Escape") dn.setEditing(false);
+                      }}
+                      className="bg-transparent outline-none text-sm text-white/90 placeholder:text-white/40 w-44"
+                      placeholder="Your display name"
+                      maxLength={32}
+                    />
+                    <button
+                      onClick={() => dn.save(dn.name)}
+                      className="ml-1 rounded-xl px-2 py-1 text-xs bg-emerald-500/80 text-black hover:bg-emerald-500"
+                      disabled={dn.saving}
+                      title="Save"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={() => dn.setEditing(false)}
+                      className="ml-1 rounded-xl px-2 py-1 text-xs bg-white/10 text-white hover:bg-white/15"
+                      title="Cancel"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                {dn.error && (
+                  <span className="text-xs text-amber-300/90 ml-1">{dn.error}</span>
+                )}
+                {dn.saving && !dn.error && (
+                  <span className="text-xs text-white/50 ml-1">Saving…</span>
+                )}
 
-                <button
-                  onClick={() => supabase.auth.signOut()}
-                  className={btnGhost}
-                  title="Sign out"
-                >
-                  <LogOut size={16} />
-                  Leave
+                <button onClick={() => supabase.auth.signOut()} className={btnGhost} title="Sign out">
+                  <LogOut size={16} /> Leave
                 </button>
               </div>
             ) : (
@@ -1771,6 +1799,7 @@ const startBlockReason = !folderTopics.length
             setBoard={setBoard}
             topicMap={topicMap}
             highlightId={lastEntryId}
+            maxShown = {10}
           />       
           <SuggestionsPanel /> 
           </div>
@@ -2553,7 +2582,7 @@ function summarizeTopics(board, weights = { wAcc: 1, wSpeed: 0.7 }, prior = 1){
 }
 
 
-function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
+function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 10 }) {
   const TABS = ["overview", "topics", "sessions"];
 
   const [tab, setTab] = useState("overview");
@@ -2575,23 +2604,51 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
     prevTabRef.current = to;
   }
 
+  // (future) apply time range / topic filter here
   const filteredBoard = useMemo(() => {
-    // apply time range here if desired
     return board;
-  }, [board, range]);
+  }, [board, range, topicFilter]);
 
   const topicSummaries = useMemo(() => summarizeTopics(filteredBoard), [filteredBoard]);
+
+  // ---- sessions limiting + recent highlight (Step 4) ----
+  const shown = useMemo(() => filteredBoard.slice(0, maxShown), [filteredBoard, maxShown]);
+  const hiddenCount = Math.max(0, filteredBoard.length - shown.length);
+  const recent = highlightId ? filteredBoard.find(e => e.id === highlightId) : null;
+  const recentOffList = !!(recent && !shown.some(e => e.id === recent.id));
+
+  // small helpers for sessions rendering
+  const fmtPct = (x) => Number.isFinite(x) ? Math.round(x * 100) + "%" : "—";
+  const fmtQPM = (e) => {
+    if (Number.isFinite(e?.avgSecPerQ) && e.avgSecPerQ > 0) return (60 / e.avgSecPerQ).toFixed(2);
+    if (Number.isFinite(e?.correct) && Number.isFinite(e?.durationSec) && e.durationSec > 0) {
+      return (e.correct / (e.durationSec / 60)).toFixed(2);
+    }
+    return "—";
+  };
+  const fmtWhen = (ts) => {
+    const d = ts ? new Date(ts) : null;
+    if (!d || isNaN(d)) return "";
+    return d.toLocaleString();
+  };
 
   return (
     <motion.div layout className={`${panel} relative overflow-visible`}>
       <PanelGloss />
+
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-          <Trophy className="size={18} font-semibold"/> Performance
+          <Trophy size={18} className="text-white/80" />
+          Performance
         </h2>
         <div className="flex items-center gap-2">
-          <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
+          <button
+            className={btnGhost}
+            onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}
+          >
+            Clear
+          </button>
         </div>
       </div>
 
@@ -2606,7 +2663,6 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
             {k[0].toUpperCase() + k.slice(1)}
           </button>
         ))}
-
       </div>
 
       <div className="relative overflow-x-visible overflow-y-visible min-h-[15em]">
@@ -2624,21 +2680,92 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId }) {
             }}
           >
             {tab === "overview" && (
-              <OverviewTab board={filteredBoard} topicSummaries={topicSummaries} topicMap={topicMap} />
+              <OverviewTab
+                board={filteredBoard}
+                topicSummaries={topicSummaries}
+                topicMap={topicMap}
+              />
             )}
+
             {tab === "topics" && (
-              <TopicsTab topicSummaries={topicSummaries} topicMap={topicMap} />
+              <TopicsTab
+                topicSummaries={topicSummaries}
+                topicMap={topicMap}
+              />
             )}
+
             {tab === "sessions" && (
-              <SessionsTab board={filteredBoard} topicMap={topicMap} highlightId={highlightId} />
+              <div className="space-y-2">
+                {/* Top N sessions */}
+                {shown.length === 0 ? (
+                  <div className="text-sm text-white/60">No sessions yet.</div>
+                ) : (
+                  shown.map((e) => {
+                    const isRecent = e.id === highlightId;
+                    return (
+                      <div
+                        key={e.id}
+                        className={`rounded-2xl px-3 py-2 bg-white/5 border border-white/10 text-white/90
+                          ${isRecent ? "ring-2 ring-emerald-400/50" : ""}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm">
+                            <span className="font-semibold">{e.score ?? 0}</span>
+                            <span className="text-white/50"> /1000</span>
+                            <span className="text-white/50"> • </span>
+                            Acc {fmtPct(e.accuracy)}
+                            <span className="text-white/50"> • </span>
+                            QPM {fmtQPM(e)}
+                          </div>
+                          <div className="text-xs text-white/50">
+                            {fmtWhen(e.createdAt || e.created_at)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {/* Hidden summary */}
+                {hiddenCount > 0 && (
+                  <div className="flex items-center justify-between text-sm text-white/60 mt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                      {hiddenCount} more session{hiddenCount > 1 ? "s" : ""} hidden
+                    </div>
+                    <span className="text-white/50">…</span>
+                  </div>
+                )}
+
+                {/* Recent session teaser if it’s off-list */}
+                {recentOffList && recent && (
+                  <div className="mt-2 rounded-2xl bg-emerald-500/10 border border-emerald-400/30 p-3">
+                    <div className="text-xs text-emerald-200/90 mb-1">Recent session</div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-white/90 text-sm">
+                        Score <span className="font-semibold">{recent.score ?? 0}</span>
+                        <span className="text-white/50"> /1000</span>
+                        <span className="text-white/50"> • </span>
+                        Acc {fmtPct(recent.accuracy)}
+                        <span className="text-white/50"> • </span>
+                        QPM {fmtQPM(recent)}
+                      </div>
+                      <div className="text-xs text-white/60">
+                        {fmtWhen(recent.createdAt || recent.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </motion.div>
         </AnimatePresence>
       </div>
-
     </motion.div>
   );
 }
+
+
 function OverviewTab({ board, topicSummaries, topicMap }) {
   const n = board.length;
   const avgScore = robustAverageScore(board);
