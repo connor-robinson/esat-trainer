@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && echo \"VITE_SUPABASE_URL=$VITE_SUPABASE_URL\" && node -e \"console.log('Key set?', !!process.env.VITE_SUPABASE_ANON_KEY)\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },
