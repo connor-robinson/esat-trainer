@@ -1,13 +1,13 @@
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
 import { useDisplayName } from "./hooks/useDisplayName";
-
+import GlobalLeaderboard from "./components/GlobalLeaderboard";
 import { saveSessionEntry, listSessionEntries } from "./data/sessions";
 import { hasRunOnce, markRunOnce } from "./lib/once";
 import { createPreset, listPresets, deletePreset } from "./data/presets";
 import PortalTooltip from "./components/PortalTooltip";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { LogOut, LogIn, Pencil, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, Check, Trash2, Trophy, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { LogOut, LogIn, Pencil, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, User2, Check, Trash2, Trophy, Globe2, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -66,6 +66,41 @@ function TopicRow({ id, label, onAdd }) {
 }
 
 // ---------- Styling helpers ----------
+const median = (a) => {
+  if (a.length===0) return 0;
+  const s=[...a].sort((x,y)=>x-y), m=Math.floor(s.length/2);
+  return s.length%2 ? s[m] : 0.5*(s[m-1]+s[m]);
+};
+const mad = (a, m = median(a)) => {
+  if (a.length===0) return 0;
+  const dev = a.map(x=>Math.abs(x-m));
+  return median(dev) || 0;
+};
+const winsorizeAround = (a, centre, spread, k=3) => {
+  if (!a.length) return a;
+  const lo = centre - k*spread;
+  const hi = centre + k*spread;
+  return a.map(x => clamp(x, lo, hi));
+};
+function wilsonLowerBound(successes, trials, z = 1.96) {
+  if (!trials || trials <= 0) return 0;
+  const p = successes / trials;
+  const denom  = 1 + (z*z)/trials;
+  const centre = p + (z*z)/(2*trials);
+  const margin = z * Math.sqrt((p*(1-p) + (z*z)/(4*trials)) / trials);
+  return Math.max(0, (centre - margin) / denom);
+}
+function normalCDF(z) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z*z/2);
+  const prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - prob : prob;
+}
+// map blended z to 1..1000 via Normal CDF
+function zToScore01k(z) {
+  const p = normalCDF(z); // 0..1
+  return Math.round(1 + 999 * clamp(p, 0, 1));
+}
 const cardBase =
   "rounded-2xl bg-[#171a20]/90 backdrop-blur border border-white/5 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.6)]";
 const panel = `${cardBase} p-4 sm:p-6`;
@@ -1505,6 +1540,7 @@ function BuilderView({
 
 
 
+  const [highlightId, setHighlightId] = useState(null);
 
   const [topicQuery, setTopicQuery] = useState("");
   const [triedStart, setTriedStart] = useState(false);
@@ -1763,13 +1799,14 @@ const startBlockReason = !folderTopics.length
           {/* Saved Sessions */}
 
           {/* Leaderboard */}
-          <LeaderboardPanel
+          <AnalyticsShell
             board={board}
             setBoard={setBoard}
             topicMap={topicMap}
-            highlightId={lastEntryId}
-            maxShown = {10}
-          />       
+            highlightId={highlightId}
+            maxShown={5}
+            currentUser={useAuth().user}
+          />
           <SuggestionsPanel /> 
           </div>
       </div>
@@ -2485,12 +2522,18 @@ function computeRelative(topic, entry, baseline, weights = { wAcc: 1, wSpeed: 0.
 
 // --- Global baselines across all sessions (your overall "normal") ---
 function computeGlobalBaselines(board){
-  const accs = board.map(entryAccOf).filter(Number.isFinite);
+  const accs = board.map(entryAccOf).filter(x => Number.isFinite(x) && x>=0 && x<=1);
   const secs = board.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
 
-  const globalAcc = mean(accs) || 0;  // 0..1
-  const globalSec = mean(secs) || 1;  // seconds per Q
-  return { globalAcc, globalSec };
+  // robust centres
+  const globalAcc = median(accs) || 0;     // 0..1
+  const globalSec = median(secs) || 1;     // sec/Q
+
+  // robust spreads (scaled MAD ~ sigma; 1.4826 is normal-consistent factor)
+  const accMAD = (1.4826 * mad(accs, globalAcc)) || 0.02;   // guard from 0
+  const secMAD = (1.4826 * mad(secs, globalSec)) || 0.05;
+
+  return { globalAcc, globalSec, accMAD, secMAD };
 }
 
 // Group entries by topic (same as before)
@@ -2506,43 +2549,68 @@ function groupByTopic(board){
 }
 
 // Main: per-topic summary + REL (relative strength index)
-function summarizeTopics(board, weights = { wAcc: 1, wSpeed: 0.7 }, prior = 1){
-  const { globalAcc, globalSec } = computeGlobalBaselines(board);
+function summarizeTopics(
+  board,
+  weights = { wAcc: 1, wSpeed: 0.7 },
+  prior = 1,
+  opts = {
+    winsorK: 3,            // clamp outliers to ±k*MAD
+    shrinkKAttempts: 40,   // EB-like shrink by attempt count
+  }
+){
+  const { globalAcc, globalSec, accMAD, secMAD } = computeGlobalBaselines(board);
   const byTopic = groupByTopic(board);
 
   const topics = [];
   for (const [topic, list] of byTopic){
     const n = list.length;
 
-    // Topic means
-    const accs = list.map(entryAccOf);
-    const secs = list.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
+    // raw arrays
+    const rawAccs = list.map(entryAccOf).filter(x => Number.isFinite(x) && x>=0 && x<=1);
+    const rawSecs = list.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x>0);
 
-    // Shrink small samples toward global baseline (Laplace-style)
-    // prior=1 adds one "pseudo" observation at the global mean
-    const topicAcc = (mean(accs) * n + globalAcc * prior) / (n + prior);
-    const topicSec = (mean(secs) * secs.length + globalSec * prior) / ((secs.length || 0) + prior);
+    // anomaly handling (winsorize around robust global centre)
+    const accs = winsorizeAround(rawAccs, globalAcc, accMAD, opts.winsorK);
+    const secs = winsorizeAround(rawSecs, globalSec, secMAD, opts.winsorK);
 
-    // REL: higher is “stronger”
-    //   accuracy term: topicAcc - globalAcc
-    //   speed term:    faster-than-global => positive
-    let rel = weights.wAcc * (topicAcc - globalAcc)
-            + weights.wSpeed * ((globalSec - topicSec) / globalSec);
-    if (!Number.isFinite(rel)) rel = 0; // safety
+    // shrink small samples toward global (Laplace-style)
+    const topicAccRaw = mean(accs);
+    const topicSecRaw = mean(secs);
+    const topicAcc = (topicAccRaw * accs.length + globalAcc * prior) / ((accs.length||0) + prior);
+    const topicSec = (topicSecRaw * secs.length + globalSec * prior) / ((secs.length||0) + prior);
 
-    // Keep it bounded for display sanity
-    rel = Math.max(-1, Math.min(1, rel));
-
+    // reliability / volume
     const attempts = list.reduce((s, e) => s + (e.attempts || 0), 0);
+    const correct  = list.reduce((s, e) => s + (Number.isFinite(e.correct) ? e.correct
+                                         : Math.round((entryAccOf(e)||0)*(e.attempts||0))), 0);
+    const sessions = n;
+    const relWL    = wilsonLowerBound(correct, attempts);        // 0..1
+    const shrinkA  = attempts / (attempts + opts.shrinkKAttempts); // 0..1
+
+    // z-scores relative to robust global centre & spread
+    const zAcc = accMAD > 0 ? (topicAcc - globalAcc) / accMAD : 0;
+    const zSpd = secMAD > 0 ? (globalSec - topicSec) / secMAD : 0; // faster-than-global => positive
+
+    // blended performance signal
+    const blendedZ = (weights.wAcc * zAcc + weights.wSpeed * zSpd)
+                   * (0.5 + 0.5 * relWL)   // down-weight low-confidence accuracy
+                   * (0.5 + 0.5 * shrinkA); // down-weight tiny attempt counts
+
+    // map to 1..1000
+    const normScore = zToScore01k(clamp(blendedZ, -6, 6)); // cap extreme tails for stability
+
+    // weak/strong index retained (bounded -1..1) using a gentle tanh
+    const weakIndex = clamp(blendedZ / 3, -1, 1);
 
     topics.push({
       topic,
       attempts,
-      sessions: n,
-      avgScore: mean(list.map(e => e.score || 0)),
-      avgAcc: topicAcc,          // already shrunk
-      avgSec: topicSec,          // already shrunk
-      weakIndex: rel,            // <0 weaker than your overall, >0 stronger
+      sessions,
+      avgScore: mean(list.map(e => e.score || 0)), // keep original for compatibility
+      normScore,                                   // NEW: 1..1000
+      avgAcc: topicAcc,
+      avgSec: topicSec,
+      weakIndex,
       entries: list,
     });
   }
@@ -2551,7 +2619,7 @@ function summarizeTopics(board, weights = { wAcc: 1, wSpeed: 0.7 }, prior = 1){
 }
 
 
-function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 10 }) {
+function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 5 }) {
   const TABS = ["overview", "topics", "sessions"];
 
   const [tab, setTab] = useState("overview");
@@ -2595,9 +2663,6 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 1
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
           <Trophy size={18} className="text-white/80" /> Performance
         </h2>
-        <div className="flex items-center gap-2">
-          <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
-        </div>
       </div>
 
       {/* Tabs */}
@@ -2613,7 +2678,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 1
         ))}
       </div>
 
-      <div className="relative overflow-x-visible overflow-y-visible min-h-[15em]">
+      <div className="relative overflow-visible h-auto min-h-0">
         <AnimatePresence initial={false} custom={dir}>
           <motion.div
             key={tab}
@@ -2655,31 +2720,245 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 1
   );
 }
 
+function SectionRailSwitch({ value, onChange }) {
+  const options = [
+    { key: "personal", label: "Personal", icon: User2 },
+    { key: "global",   label: "Global",   icon: Globe2 },
+    ];
+  const idx = options.findIndex(o => o.key === value);
+  const isGlobal = value === "global";
 
+  return (
+    <div
+      role="tablist"
+      aria-label="Select leaderboard scope"
+      className="relative inline-flex items-center rounded-2xl bg-white/5 border border-white/10 p-1"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") onChange(options[Math.min(idx+1, options.length-1)].key);
+        if (e.key === "ArrowLeft")  onChange(options[Math.max(idx-1, 0)].key);
+      }}
+    >
+      {/* Sliding handle (style changes by target) */}
+      <motion.div
+        aria-hidden
+        className={`absolute top-1 bottom-1 rounded-xl border
+          ${isGlobal
+            ? "bg-[#0d1117]/85 border-white/10 ring-1 ring-emerald-400/35 shadow-[0_10px_28px_-10px_rgba(16,185,129,0.55)]"
+            : "bg-white/5 border-white/10"}`
+        }
+        animate={{ left: idx === 0 ? 4 : "calc(50% + 4px)", right: idx === 0 ? "calc(50% + 4px)" : 4 }}
+        transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.7 }}
+      />
+
+      {options.map((o) => {
+        const ActiveIcon = o.icon;
+        const active = value === o.key;
+        const activeGlobal = active && o.key === "global";
+        return (
+          <button
+            key={o.key}
+            role="tab"
+            aria-selected={active}
+            className={`relative z-10 w-40 h-10 px-3 rounded-xl whitespace-nowrap
+                        inline-flex items-center justify-center gap-2
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/30
+                        transition-colors
+                        ${active
+                          ? (activeGlobal ? "text-emerald-200" : "text-white")
+                          : "text-white/75 hover:text-white"}`}
+            onClick={() => onChange(o.key)}
+          >
+            <ActiveIcon size={16} className={`${activeGlobal ? "text-emerald-300" : "text-white/65"}`} />
+            <span className="text-sm font-medium tracking-tight">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+function AnalyticsShell({ board, setBoard, topicMap, highlightId, maxShown = 5, currentUser }) {
+  const [section, setSection] = React.useState("performance"); // "performance" | "global"
+
+  // reuse your existing computations for Performance
+  const filteredBoard = React.useMemo(() => board, [board]);
+  const topicSummaries = React.useMemo(() => summarizeTopics(filteredBoard), [filteredBoard]);
+  const sessionsCapped = React.useMemo(() => filteredBoard.slice(0, maxShown), [filteredBoard, maxShown]);
+
+  return (
+    <motion.div layout className={`${panel} relative overflow-visible`}>
+      <PanelGloss />
+
+      {/* Header with rail switch */}
+  {/* Header with rail switch */}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+  <Trophy size={18} className="text-white/80" />
+          Analytics
+        </h2>
+        <SectionRailSwitch value={section} onChange={setSection} />
+      </div>
+
+      {/* Body — absolute crossfade to avoid height jumps */}
+      {/* Body — natural height (shrinks/expands with content) */}
+      <div className="relative">
+        <AnimatePresence mode="wait" initial={false}>
+          {section === "personal" ? (
+            <motion.div
+              key="personal"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              layout
+            >
+              <PerformanceTabs
+                board={filteredBoard}
+                topicSummaries={topicSummaries}
+                topicMap={topicMap}
+                sessionsCapped={sessionsCapped}
+                highlightId={highlightId}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="global"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              layout
+            >
+              <GlobalLeaderboard
+                topicMap={topicMap}
+                currentUserId={currentUser?.id}
+                currentDisplayName={currentUser?.user_metadata?.display_name ?? currentUser?.email?.split("@")[0]}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+
+      {/* Body */}
+<div className="relative overflow-visible h-auto min-h-0">
+        <AnimatePresence initial={false} mode="popLayout">
+          {section === "performance" ? (
+            <motion.div
+              key="perf"
+              initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 30, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <div className="mb-2 flex items-center justify-end">
+                <button className={btnGhost} onClick={() => { if (confirm("Clear leaderboard?")) setBoard([]); }}>Clear</button>
+              </div>
+
+              {/* Your existing performance tabs panel */}
+              <PerformanceTabs
+                board={filteredBoard}
+                topicSummaries={topicSummaries}
+                topicMap={topicMap}
+                sessionsCapped={sessionsCapped}
+                highlightId={highlightId}
+                setBoard={setBoard}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="global"
+              initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -30, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              {/* Render the GLOBAL card as a full panel section */}
+
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+function PerformanceTabs({ board, topicSummaries, topicMap, sessionsCapped, highlightId, setBoard }) {
+  const TABS = ["overview", "topics", "sessions"];
+  const [tab, setTab] = React.useState("overview");
+  const prevTabRef = React.useRef(tab);
+  const [dir, setDir] = React.useState(0);
+
+  function changeTab(next) {
+    const from = prevTabRef.current;
+    const to = next;
+    const d = TABS.indexOf(to) > TABS.indexOf(from) ? 1 : TABS.indexOf(to) < TABS.indexOf(from) ? -1 : 0;
+    setDir(d); setTab(to); prevTabRef.current = to;
+  }
+
+  return (
+    <>
+      {/* tabs row exactly as you had */}
+  {/* Tabs row + Clear aligned on one line */}
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <div className="flex gap-2">
+          {TABS.map(k => (
+            <button
+              key={k}
+              className={`${btnGhost} ${tab === k ? "ring-2 ring-emerald-400/60" : ""}`}
+              onClick={() => changeTab(k)}
+            >
+              {k[0].toUpperCase() + k.slice(1)}
+            </button>
+          ))}
+        </div>
+        <button
+          className={btnGhost}
+          onClick={() => { if (confirm("Clear leaderboard?")) setBoard?.([]); }}
+        >
+          Clear
+        </button>
+      </div>
+
+
+      <div className="relative overflow-x-visible overflow-y-visible min-h-[15em]">
+        <AnimatePresence initial={false} custom={dir}>
+          <motion.div
+            key={tab}
+            custom={dir}
+            initial="enter" animate="center" exit="exit"
+            variants={{
+              enter: (d) => ({ x: d === 0 ? 0 : (d > 0 ? 40 : -40), opacity: 0 }),
+              center: { x: 0, opacity: 1, transition: { duration: 0.18, ease: "easeOut" } },
+              exit: (d) => ({ x: d > 0 ? -40 : 40, opacity: 0, transition: { duration: 0.16, ease: "easeIn" } })
+            }}
+          >
+            {tab === "overview" && (
+              <OverviewTab board={board} topicSummaries={topicSummaries} topicMap={topicMap} />
+            )}
+            {tab === "topics" && (
+              <TopicsTab topicSummaries={topicSummaries} topicMap={topicMap} />
+            )}
+            {tab === "sessions" && (
+              <SessionsTab board={sessionsCapped} topicMap={topicMap} highlightId={highlightId} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </>
+  );
+}
 
 function OverviewTab({ board, topicSummaries, topicMap }) {
+  const { user } = useAuth();
   const n = board.length;
   const avgScore = robustAverageScore(board);
   const avgAcc   = board.reduce((s,e)=>s+(e.accuracy||0),0)/(n||1);
   const avgSec   = Math.round(10*board.reduce((s,e)=>s+(e.avgSecPerQ||0),0)/(n||1))/10;
 
-  // REL can be negative, so we just sort naturally
-// Let *all* finite RELs compete, then prefer well-sampled items as a tiebreaker.
-// This ensures negative REL topics show up even with low attempts.
+  // Let all finite RELs compete, then prefer well-sampled items as tie-breaker
   const finite = topicSummaries.filter(t => Number.isFinite(t.weakIndex));
 
-  // Weakest: lowest REL first
   const weakest = [...finite]
-    .sort((a, b) =>
-      (a.weakIndex - b.weakIndex) || ((b.attempts || 0) - (a.attempts || 0))
-    )
+    .sort((a, b) => (a.weakIndex - b.weakIndex) || ((b.attempts || 0) - (a.attempts || 0)))
     .slice(0, 3);
 
-  // Strongest: highest REL first
   const strongest = [...finite]
-    .sort((a, b) =>
-      (b.weakIndex - a.weakIndex) || ((b.attempts || 0) - (a.attempts || 0))
-    )
+    .sort((a, b) => (b.weakIndex - a.weakIndex) || ((b.attempts || 0) - (a.attempts || 0)))
     .slice(0, 3);
 
   return (
@@ -2691,31 +2970,24 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
             <div className="inline-flex items-center gap-1 leading-none">
               <span>Avg score</span>
               <PortalTooltip text={"Your score = 60% accuracy + 40% speed, compared to your usual pace.\n“Avg score” is the mean of all your sessions, scaled out of 1000."}>
-                <HelpCircle
-                  size={12}
-                  className="text-white/40 hover:text-white/70 cursor-help relative top-[0.5px]"
-                />
+                <HelpCircle size={12} className="text-white/40 hover:text-white/70 cursor-help relative top-[0.5px]" />
               </PortalTooltip>
             </div>
           }
-          value={
-            <>
-              {avgScore}
-              <span className="text-xs text-white/50"> /1000</span>
-            </>
-          }
+          value={<>{avgScore}<span className="text-xs text-white/50"> /1000</span></>}
         />
         <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
         <KPI label="Avg sec / Q" value={avgSec} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <TopicList title="Weakest topics" items={weakest} topicMap={topicMap} tone="weak" />
+        <TopicList title="Weakest topics"  items={weakest}   topicMap={topicMap} tone="weak" />
         <TopicList title="Strongest topics" items={strongest} topicMap={topicMap} tone="strong" />
       </div>
     </div>
   );
 }
+
 
 
 
