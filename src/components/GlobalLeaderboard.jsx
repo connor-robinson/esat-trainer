@@ -123,7 +123,7 @@ function DarkSelect({
 
       {open && (
         <div
-          className="absolute z-50 mt-1 min-w-full rounded-xl bg-[#171a20]/98
+          className="absolute z-50 mt-1 min-w-full rounded-xl bg-[#111318]/80
                      border border-white/10 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.6)] overflow-hidden"
           style={{ maxHeight: maxMenuHeight }}
         >
@@ -171,14 +171,22 @@ function DarkSelect({
   );
 }
 
-
-
+const lbHueStyle = {
+  backgroundImage:
+    `radial-gradient(120% 120% at -10% -10%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 55%, transparent 60%),
+     linear-gradient(to bottom right, rgba(16,185,129,0.06), rgba(16,185,129,0.02))`
+};
 /* ------------- Generic table ----------------- */
 /* ------------- Generic table ----------------- */
 function LBTable({ titleIcon, title, rows, columns, progress, meRowId, isAggregate=false }) {
   return (
-    <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
-      <div className="flex items-center gap-2 text-white/80 mb-2">
+    <div
+      className="rounded-3xl bg-[#0d1117]/80 backdrop-blur-md
+               border border-white/10 ring-1 ring-emerald-400/10
+               shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]
+               p-3"
+      style={lbHueStyle}
+    >      <div className="flex items-center gap-2 text-white/80 mb-2">
         {titleIcon} <span className="font-semibold">{title}</span>
       </div>
 
@@ -204,8 +212,8 @@ function LBTable({ titleIcon, title, rows, columns, progress, meRowId, isAggrega
               <div
                 key={(r.id ?? name) + i}
                 className={`rounded-2xl bg-[#0b0f14]/80 border border-white/10 p-3
-                            hover:border-emerald-400/30 hover:shadow-[0_10px_30px_-10px_rgba(16,185,129,0.2)]
-                            transition ${isMe ? "ring-2 ring-emerald-400/50" : ""}`}
+                            hover:border-emerald-400/30 hover:shadow-[0_10px_34px_-10px_rgba(16,185,129,0.28)]
+                            transition ${isMe ? "ring-2 ring-emerald-400/60" : ""}`}
               >
                 <div className="flex items-center gap-3">
                   <MedalBadge rank={rank <= 3 ? rank : undefined} />
@@ -397,31 +405,14 @@ export default function GlobalLeaderboard({ topicMap, currentUserId, currentDisp
         </div>
 
         {/* Overall top banner */}
-        {overallTop ? (
-          <div className="mt-3 flex items-center gap-3">
-            <MedalBadge rank={1} />
-            <div className="flex-1">
-              <div className="text-white/90 text-sm">
-                <span className="font-semibold">{overallTop.name}</span>
-                <span className="text-white/50"> • </span>
-                Best score <span className="font-semibold">{overallTop.bestScore}</span>
-                <span className="text-white/50"> • </span>
-                Best acc {Math.round(overallTop.bestAcc*100)}%
-                <span className="text-white/50"> • </span>
-                Practice {Math.round(overallTop.minutes/60)} min
-              </div>
-              <GlowBar value={overallTop.blend} />
-            </div>
-          </div>
-        ) : (
-          <div className="mt-2 text-sm text-white/60" />
-        )}
+        <div className="mt-2" />
+
 
         {/* Tabs */}
         <div className="flex items-center gap-2 mt-4 mb-3">
           <button onClick={()=>setTab("top")} className={`${tabBase} ${tab==="top" ? tabActive : ""}`}>Top Scores</button>
           <button onClick={()=>setTab("accurate")} className={`${tabBase} ${tab==="accurate" ? tabActive : ""}`}>Most Accurate</button>
-          <button onClick={()=>setTab("practice")} className={`${tabBase} ${tab==="practice" ? tabActive : ""}`}>Most Practice</button>
+          <button onClick={()=>setTab("practice")} className={`${tabBase} ${tab==="practice" ? tabActive : ""}`}>Most Practiced</button>
         </div>
 
         {/* Single table area (view swapped) */}
