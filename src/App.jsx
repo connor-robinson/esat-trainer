@@ -360,6 +360,23 @@ function equalish(userInput, expected){
 }
 
 // helper to identify CALCULATION-only topics (for Flash)
+async function updateGlobalDisplayName(userId, displayName) {
+  const now = new Date().toISOString();
+
+  // 1) profiles (authoritative)
+  const { error: pErr } = await supabase
+    .from("profiles")
+    .upsert({ user_id: userId, display_name: displayName, updated_at: now });
+  if (pErr) throw pErr;
+
+  // 2) leaderboard (denormalized copy on past rows)
+  const { error: lErr } = await supabase
+    .from("leaderboard")
+    .update({ display_name: displayName })
+    .eq("user_id", userId);
+  if (lErr) throw lErr;
+}
+
 const CALC_IDS = new Set(CATEGORIES.CALCULATION.map(t=>t.id));
 const isCalc = (id)=> CALC_IDS.has(id);
 // ---------- MathJax helpers ----------
@@ -1363,6 +1380,11 @@ function saveSession(name){
   supabase.auth.getUser().then(async ({ data }) => {
     if (!data.user) return;
     try {
+      await supabase.from("profiles").upsert({
+        user_id: data.user.id,
+        display_name: name,   // the new name user typed
+        updated_at: new Date().toISOString()
+      });
       await createPreset({
         name: entry.name,
         topics: entry.topics,
@@ -1502,7 +1524,6 @@ function saveSession(name){
                     await saveSessionEntry(entry); // you can store entry directly as payload
                     await supabase.from("leaderboard").insert([{
                       user_id: data.user.id,
-                      display_name: data.user.user_metadata?.display_name ?? data.user.email?.split("@")[0],
                       score: entry.score,
                       accuracy: entry.accuracy,
                       attempts: entry.attempts,
