@@ -1,3 +1,5 @@
+import 'katex/dist/katex.min.css';
+import { BlockMath } from 'react-katex';
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
 import { useDisplayName } from "./hooks/useDisplayName";
@@ -66,6 +68,44 @@ function TopicRow({ id, label, onAdd }) {
 }
 
 // ---------- Styling helpers ----------
+// Parse scientific notation variants: "a×10^n", "a*10^-n", "a e n"
+function parseSci(s) {
+  const t = (s||"").trim()
+    .replace(/\s+/g, "")
+    .replace(/×/g, "*")
+    .replace(/⋅/g, "*")
+    .replace(/\^/g, "^")
+    .toLowerCase();
+
+  // a*10^n
+  let m = t.match(/^([+-]?\d+(?:\.\d+)?)\*10\^([+-]?\d+)$/);
+  if (m) return { a:+m[1], n:+m[2] };
+
+  // a*10^-n (already covered by previous), kept for safety
+  m = t.match(/^([+-]?\d+(?:\.\d+)?)\*10\^([+-]?\d+)$/);
+  if (m) return { a:+m[1], n:+m[2] };
+
+  // a e n
+  m = t.match(/^([+-]?\d+(?:\.\d+)?)[e]([+-]?\d+)$/);
+  if (m) return { a:+m[1], n:+m[2] };
+
+  return null;
+}
+
+function toScientific(x) {
+  if (x === 0) return { a: 0, n: 0 };
+  const n = Math.floor(Math.log10(Math.abs(x)));
+  const a = x / Math.pow(10, n);
+  // normalize to [1,10)
+  let A = a, N = n;
+  if (Math.abs(A) >= 10) { A /= 10; N += 1; }
+  if (Math.abs(A) < 1)   { A *= 10; N -= 1; }
+  // round A to a sensible length
+  const Ar = Math.round(A * 1000) / 1000;
+  return { a: Ar, n: N };
+}
+
+
 const median = (a) => {
   if (a.length===0) return 0;
   const s=[...a].sort((x,y)=>x-y), m=Math.floor(s.length/2);
@@ -126,13 +166,15 @@ const CATEGORIES = {
     { id: "speed_basic", label: "Speed = Distance / Time" },
     { id: "prime_factorise", label: "Prime Factorisation" },   // ⬅️ new
     { id: "powers_mixed", label: "Powers of 2" },
-    { id: "indices_simplify", label: "Simplifying Indices" },
+    { id: "divisibility_rules", label: "Divisbility Rule" },
+    { id: "sci_rewrite", label: "Divisbility Rule" },
   ],
   FRACTIONS: [
     { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
     { id: "simplify_fraction", label: "Simplifying fractions" },
   ],
   ALGEBRA: [
+    { id: "factorise_quadratics", label: "Factorise Quadratics" },
     { id: "complete_square", label: "Complete the Square" },
     { id: "inequalities", label: "Inequalities" },
     { id: "binomial_expand", label: "Binomial Expansion" },
@@ -141,6 +183,7 @@ const CATEGORIES = {
     { id: "suvat_solve", label: "SUVAT" },
     { id: "units_con vert", label: "Units (SI)" },
     { id: "sphere_volume", label: "Sphere Volume" },
+    { id: "circle_theorems", label: "Circle Theorems" },
     { id: "sphere_area", label: "Sphere Surface Area" },
     { id: "cylinder_sa", label: "Cylinder Surface Area" },
     { id: "cone_sa", label: "Cone Surface Area" },
@@ -148,6 +191,7 @@ const CATEGORIES = {
   ],
   TRIGONOMETRY: [
     { id: "trig_recall", label: "Trig Ratios " },
+    { id: "trig_inverse_recall", label: "Inverse Trig Ratios " },
     { id: "trig_eval", label: "Using trig functions" },
     { id: "tri_special", label: "Special Triangles" },
   ],
@@ -260,7 +304,6 @@ function beautifyInline(s) {
 }
 
 // Fractions helpers
-
 function reduceFraction(p, q){
   const g = gcd(p, q);
   p /= g; q /= g;
@@ -614,6 +657,41 @@ function isTerminatingDenom(q){
 function genQuestion(topic) {
   switch (topic) {
     // Mental arithmetic
+    case "sci_rewrite": {
+      function randomSciNumber() {
+        const exponent = randInt(-6, 6); // between 10^-6 and 10^6
+        const mantissa = (Math.random() * 9 + 1); // between 1 and 10
+        const num = mantissa * Math.pow(10, exponent);
+        return parseFloat(num.toPrecision(3)); // cleaner form
+      }
+
+      // Generate a simple number that clearly demonstrates shifting decimal
+      const pool = Array.from({ length: 20 }, () => randomSciNumber());
+      const x = pick(pool) * (Math.random() < 0.2 ? -1 : 1);
+
+      const { a, n } = toScientific(x);
+
+      const showA = (Number.isInteger(a) ? String(a) : String(a));
+      const prompt = `Rewrite ${x} in the form a×10^n (scientific notation).`;
+
+      const canonical = `${showA}×10^${n}`;         // pretty
+      const acceptable = [
+        canonical,
+        `${showA}*10^${n}`,
+        `${showA}e${n}`,
+      ];
+
+      const checker = (user) => {
+        const parsed = parseSci(user);
+        if (!parsed) return false;
+        // compare exponent exactly, mantissa ~ within small tolerance
+        if (parsed.n !== n) return false;
+        return Math.abs(parsed.a - a) <= 1e-3;
+      };
+
+      return { prompt, answer: canonical, acceptableAnswers: acceptable, checker };
+    }
+
     case "mental_add": { const a = randInt(10, 999), b = randInt(10, 999); return { prompt: `${a} + ${b}`, answer: String(a + b) }; }
     case "mental_sub": { const a = randInt(100, 999), b = randInt(10, 999); const [x, y] = a > b ? [a, b] : [b, a]; return { prompt: `${x} - ${y}`, answer: String(x - y) }; }
     case "mental_mul": { const a = randInt(10, 99), b = randInt(2, 9); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
@@ -760,6 +838,302 @@ function genQuestion(topic) {
         }
       }
     }
+    case "factorise_quadratic": {
+      // Two difficulty modes:
+      // - easy: small a, c (both factor nicely)
+      // - slightly harder: a = 1 but |c| can be larger (e.g., 176), clean b
+      const mode = Math.random() < 0.5 ? "easy" : "hard";
+
+      let a, b, c, A, B, C, D;
+
+      if (mode === "easy") {
+        // Pick (Ax+B)(Cx+D) with small coefficients, random signs
+        A = pick([1, 1, 2, 3]);
+        C = pick([1, 2, 3]);
+        const q = pick([-9, -8, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 8, 9]);
+        const s = pick([-9, -8, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 8, 9]);
+        B = q; D = s;
+
+        ({ a, b, c } = expandFactors(A, B, C, D));
+        // Make sure it's not degenerate and reasonably sized
+        if (Math.abs(a) > 9 || Math.abs(b) > 60 || Math.abs(c) > 120) {
+          // regenerate once
+          A = 2; C = 1; B = 3; D = 2;
+          ({ a, b, c } = expandFactors(A, B, C, D));
+        }
+      } else {
+        // Slightly harder: a = 1, |c| larger, but factorable; choose b nice
+        // Pick p, q as integer roots → (x+p)(x+q)
+        const p = pick([-20, -16, -15, -12, -11, -10, -9, -8, -7, -6, -5, -4, 4, 5, 6, 7, 8, 9, 10, 12, 14]);
+        const q = pick([-12, -11, -10, -9, -8, -7, -6, -5, -4, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+        A = 1; C = 1; B = p; D = q;
+        ({ a, b, c } = expandFactors(A, B, C, D));
+        // Ensure |c| is “harder”
+        if (Math.abs(c) < 60) {
+          // tweak q
+          const q2 = q * pick([2, -2]);
+          D = q2;
+          ({ a, b, c } = expandFactors(A, B, C, D));
+        }
+      }
+
+      const polyStr = `${a === 1 ? "" : a}x^2 ${b >= 0 ? "+ " + b : "− " + Math.abs(b)}x ${c >= 0 ? "+ " + c : "− " + Math.abs(c)}`;
+
+      // Canonical answer (one ordering)
+      const ans1 = `(${A === 1 ? "x" : A + "x"}${B >= 0 ? "+" + B : B})(${C === 1 ? "x" : C + "x"}${D >= 0 ? "+" + D : D})`;
+      const ans2 = `(${C === 1 ? "x" : C + "x"}${D >= 0 ? "+" + D : D})(${A === 1 ? "x" : A + "x"}${B >= 0 ? "+" + B : B})`;
+
+      const target = { a, b, c };
+
+      return {
+        prompt: `Factorise: ${polyStr}`,
+        answer: ans1,
+        acceptableAnswers: [ans1, ans2],
+        checker: (user) => {
+          const u = user.replace(/\s+/g, "");
+          // quick accept if matches one of the strings (order)
+          if (u === ans1.replace(/\s+/g, "") || u === ans2.replace(/\s+/g, "")) return true;
+
+          // robust: parse (Ax+B)(Cx+D), multiply and compare
+          const parsed = parseBinomialProduct(u);
+          if (!parsed) return false;
+          const exp = expandFactors(parsed.A, parsed.B, parsed.C, parsed.D);
+          return sameQuad(exp, target);
+        }
+      };
+    }
+    
+    case "divisibility_rules": {
+      const divisors = [3, 4, 6, 7, 8, 9, 11];
+      const d = pick(divisors);
+
+      // Decide if we want a YES or NO instance
+      const wantDivisible = Math.random() < 0.5;
+      let N;
+
+      if (wantDivisible) {
+        // choose a multiple of d in [100..999]
+        const kMin = Math.ceil(100 / d), kMax = Math.floor(999 / d);
+        const k = randInt(kMin, kMax);
+        N = k * d;
+      } else {
+        // choose non-multiple in [100..999]
+        while (true) {
+          const t = randInt(100, 999);
+          if (t % d !== 0) { N = t; break; }
+        }
+      }
+
+      const prompt = `Is ${N} divisible by ${d}? (yes/no)`;
+      const correct = wantDivisible ? "yes" : "no";
+
+      return {
+        prompt,
+        answer: correct,
+        acceptableAnswers: wantDivisible ? ["yes", "y", "Yes", "Y"] : ["no", "n", "No", "N"],
+        checker: (user) => {
+          const s = String(user).trim().toLowerCase();
+          const yn = (s === "yes" || s === "y") ? "yes" :
+            (s === "no" || s === "n") ? "no" : null;
+          if (!yn) return false;
+          return yn === correct;
+        },
+        // <-- NEW: show this in your Reveal UI under the Answer line
+        explanation: explainDivisibility(N, d),
+      };
+    }
+
+
+    case "circle_theorems": {
+      // helpers
+      const nice = x => String(Math.round(x));
+      const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+      const centerDegs = [15, 50, 100, 150, 210, 260, 320];
+
+      const giveDeg = d => ({ answer: nice(d), acceptable: [nice(d), `${nice(d)}°`] });
+      const giveNum = v => {
+        const n = Math.round(v * 100) / 100;
+        return { answer: String(n), acceptable: [String(n), String(Math.round(n)), n.toFixed(2)] };
+      };
+
+      // choose scenario
+      const scenario = pick([
+        "center_twice_circ",
+        "same_segment",
+        "semicircle_right",         // no square (infer 90°)
+        "cyclic_quad",
+        "equal_tangents_isosceles", // PA = PB
+        "alternate_segment",        // tangent–chord
+        "reflex_center",
+        "intersecting_chords_inside",
+        "secants_from_external",
+        "tangent_secant_power"
+      ]);
+
+      let diagram = {
+        type: "circle",
+        points: [],
+        chords: [],
+        radii: [],
+        tangent: null,
+        secantLines: [],
+        angleLabels: [],
+        rightAngles: [],
+        equalTicks: [],
+        sideLabels: [],
+        thetaAt: null,
+        thetaUsesChord: null,
+      };
+
+      let prompt = "Find θ (in degrees)";
+      let answer, acceptable;
+
+      if (scenario === "center_twice_circ") {
+        const A = pick(centerDegs), B = (A + pick([80, 100, 120])) % 360, C = (A + 40) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "O", deg: null }];
+        diagram.chords = [["A", "B"], ["A", "C"], ["B", "C"]];
+        diagram.radii = [["O", "A"], ["O", "B"]];
+        const central = Math.abs(((B - A + 360) % 360));
+        const minor = central > 180 ? 360 - central : central;
+        const circ = minor / 2;
+        diagram.angleLabels.push({ at: "O", from: "A", to: "B", text: `${nice(minor)}°` });
+        diagram.thetaAt = "C";
+        ({ answer, acceptable } = giveDeg(circ));
+
+      } else if (scenario === "same_segment") {
+        const A = pick(centerDegs), B = (A + pick([70, 90, 110])) % 360, C = (B + 40) % 360, D = (A + 320) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "D", deg: D }];
+        diagram.chords = [["A", "B"], ["A", "C"], ["B", "C"], ["A", "D"], ["B", "D"]];
+        const central = Math.abs(((B - A + 360) % 360));
+        const arc = (central > 180 ? 360 - central : central) / 2;
+        diagram.angleLabels.push({ at: "C", from: "A", to: "B", text: `${nice(arc)}°` });
+        diagram.thetaAt = "D";
+        ({ answer, acceptable } = giveDeg(arc));
+
+      } else if (scenario === "semicircle_right") {
+        // diameter AB → ∠ACB = 90°, but DON'T draw the right-angle square.
+        const A = pick(centerDegs), B = (A + 180) % 360, C = (A + pick([40, 140])) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "O", deg: null }];
+        diagram.chords = [["A", "B"], ["A", "C"], ["B", "C"]];
+        diagram.radii = [["O", "A"], ["O", "B"]];
+        const givenAt = pick(["A", "B"]);
+        const given = pick([28, 32, 35, 40, 48, 55]);
+        diagram.angleLabels.push({ at: givenAt, text: `${given}°` });
+        diagram.thetaAt = givenAt === "A" ? "B" : "A";
+        ({ answer, acceptable } = giveDeg(90 - given));
+
+      } else if (scenario === "cyclic_quad") {
+        const start = pick(centerDegs), step = pick([60, 80, 100]);
+        const A = start, B = (A + step) % 360, C = (B + step) % 360, D = (C + step) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "D", deg: D }];
+        diagram.chords = [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]];
+        const angA = pick([70, 80, 95, 100, 110]);
+        diagram.angleLabels.push({ at: "A", from: "D", to: "B", text: `${angA}°` });
+        diagram.thetaAt = "C";
+        ({ answer, acceptable } = giveDeg(180 - angA));
+
+      } else if (scenario === "equal_tangents_isosceles") {
+        const A = pick(centerDegs), B = (A + pick([60, 80, 100])) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "O", deg: null }];
+        // create external P via equal tangents? we only need the isosceles idea visually; keep as lengths
+        const base = pick([35, 40, 50, 60]);
+        // show base angle at A, ask apex at P (not drawn; pure angle task)
+        diagram.angleLabels.push({ at: "A", text: `${base}°` });
+        diagram.thetaAt = "P";
+        // we won't draw P for this one to keep diagram clean; it's a pure reasoning angle
+        ({ answer, acceptable } = giveDeg(180 - 2 * base));
+
+      } else if (scenario === "alternate_segment") {
+        const T = pick(centerDegs), C = (T + pick([60, 80, 100])) % 360, B = (T + 180 + 20) % 360;
+        diagram.points = [{ name: "T", deg: T }, { name: "C", deg: C }, { name: "B", deg: B }, { name: "O", deg: null }];
+        diagram.tangent = { at: "T" };
+        diagram.chords = [["T", "C"], ["B", "C"]];
+        const opp = pick([35, 40, 50, 60]);
+        diagram.angleLabels.push({ at: "B", from: "C", to: "T", text: `${opp}°` });
+        diagram.thetaAt = "T";
+        diagram.thetaUsesChord = "TC";
+        ({ answer, acceptable } = giveDeg(opp));
+
+      } else if (scenario === "reflex_center") {
+        const A = pick(centerDegs), B = (A + pick([220, 240, 260])) % 360, C = (A + 40) % 360;
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "O", deg: null }];
+        diagram.chords = [["A", "B"], ["A", "C"], ["B", "C"]];
+        diagram.radii = [["O", "A"], ["O", "B"]];
+        const central = Math.abs(((B - A + 360) % 360)); // reflex
+        const minor = 360 - central;
+        const circ = minor / 2;
+        diagram.angleLabels.push({ at: "O", from: "A", to: "B", text: `${nice(central)}°`, reflex: true });
+        diagram.thetaAt = "C";
+        ({ answer, acceptable } = giveDeg(circ));
+
+      } else if (scenario === "intersecting_chords_inside") {
+        // chords AB and CD intersect at X inside: AX·BX = CX·DX
+        const A = 20, B = 200, C = 300, D = 80; // positions that guarantee inside crossing
+        
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "D", deg: D }, { name: "O", deg: null }];
+        diagram.chords = [["A", "B"], ["C", "D"]];
+
+        // choose nice numbers
+        const AX = pick([3, 4, 5, 6]), BX = pick([4, 5, 6, 8]), CX = pick([2, 3, 4, 5]);
+        const DX = (AX * BX) / CX; // x
+        // label the correct halves (renderer now supports sub-segments like 'AX', 'BX' etc.)
+        diagram.sideLabels.push({ of: "AX", text: `AX=${AX}` });
+        diagram.sideLabels.push({ of: "BX", text: `BX=${BX}` });
+        diagram.sideLabels.push({ of: "CX", text: `CX=${CX}` });
+        diagram.sideLabels.push({ of: "DX", text: `DX=x` });
+
+        // ask for x
+        prompt = "Find x (chords intersect inside): AX·BX = CX·DX";
+        ({ answer, acceptable } = giveNum(DX));
+
+      } else if (scenario === "secants_from_external") {
+        // two secants from same external point P: (PA·PB) = (PC·PD)
+        const A = 340, B = 200, C = 120, D = 40;  // arrange so extended lines intersect outside (right side)
+        diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "D", deg: D }, { name: "O", deg: null }];
+        diagram.secantLines = [["A", "B"], ["C", "D"]];  // CircleDiagram will compute P and draw both lines
+
+        const PA = pick([3, 4, 5, 6, 8]), PB = pick([8, 10, 12, 15]), PC = pick([4, 5, 6, 8]);
+        const PD = (PA * PB) / PC;
+        diagram.sideLabels.push({ of: "PA", text: `PA=${PA}` });
+        diagram.sideLabels.push({ of: "PB", text: `PB=${PB}` });
+        diagram.sideLabels.push({ of: "PC", text: `PC=${PC}` });
+        diagram.sideLabels.push({ of: "PD", text: `PD=x` });
+
+        prompt = "Find x (two secants from P): PA·PB = PC·PD";
+        ({ answer, acceptable } = giveNum(PD));
+
+      } else { // "tangent_secant_power"
+        // Points on circle
+        const T = 30, A = 210, B = 320;
+        diagram.points = [
+          { name: "T", deg: T },
+          { name: "A", deg: A },
+          { name: "B", deg: B },
+          { name: "O", deg: null }
+        ];
+
+        // Put external point P on the tangent at T (so PT is a true tangent)
+        diagram.tangent = { at: "T", externalFromT: true, pDist: 1.5 };
+
+        // Draw the *secant* through A–B from the same P
+        diagram.secantLines = [["A", "B"]];
+
+        // Numbers & labels
+        const PT = pick([5, 6, 7, 8, 9]);
+        const PA = pick([4, 5, 6, 8, 10]);
+        const PB = (PT * PT) / PA;
+
+        diagram.sideLabels.push({ of: "PT", text: `PT=${PT}` });
+        diagram.sideLabels.push({ of: "PA", text: `PA=${PA}` });
+        diagram.sideLabels.push({ of: "PB", text: `PB=x` });
+
+        prompt = "Find x (tangent & secant): PT² = PA·PB";
+        ({ answer, acceptable } = giveNum(PB));
+      }
+
+      return { prompt, answer, acceptableAnswers: acceptable, diagram };
+    }
+
 
 
     case "indices_simplify": {
@@ -896,11 +1270,10 @@ function genQuestion(topic) {
     }
 
     case "simplify_fraction": {
-      // Helper: parse "a/b" with optional spaces & signs
+      // ---------- helpers ----------
       const parseFraction = (s) => {
         if (!s) return null;
         const t = s.trim();
-        // plain integer? (we'll disallow for this task unless the true answer is an integer)
         if (/^[+-]?\d+$/.test(t)) return [Number(t), 1];
         const m = t.match(/^\s*([+-]?\d+)\s*\/\s*([+-]?\d+)\s*$/);
         if (!m) return null;
@@ -908,59 +1281,91 @@ function genQuestion(topic) {
         if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) return null;
         return [p, q];
       };
-
-      // Build a guaranteed-unsimplified fraction:
-      // 1) choose coprime base (n0/d0)
-      // 2) multiply both by k >= 2
-      function randomCoprimePair() {
+      function randomCoprimePair(min = 2, max = 40) {
         while (true) {
-          const a = randInt(2, 40);
-          const b = randInt(2, 40);
+          const a = randInt(min, max);
+          const b = randInt(min, max);
           if (gcd(a, b) === 1) return [a, b];
         }
       }
+      // simple TeX helpers
+      const texFrac = (num, den) => `\\dfrac{${num}}{${den}}`;
+      const texParen = s => `{${s}}`; // braces are grouping in TeX
 
-      // A composite-ish factor set so gcd>1 and not trivial
-      const factors = [2,3,4,5,6,7,8,9,10,12,14,15,16,18,20];
-      const [n0, d0] = randomCoprimePair();
-      const k = pick(factors);
-      let P = n0 * k;
-      let Q = d0 * k;
+      // ---------- choose flat or nested ----------
+      // ~30% nested; nested uses smaller numbers
+      const makeNested = Math.random() < 0.3;
 
-      // Random sign (on numerator for canonical form)
-      if (Math.random() < 0.25) P = -P;
+      let P, Q;             // the unsimplified numeric fraction to show (as text fallback)
+      let promptLatex;      // the TeX we render
+      let textPrompt;       // plain text fallback like "Simplify: (a/b)/c"
 
-      // Target reduced (canonical) form
-      const [ANS_P, ANS_Q] = reduceFraction(P, Q); // denominator made positive here
-      const answer = formatFraction(ANS_P, ANS_Q); // e.g. "-3/5" or "2/3"
+      if (!makeNested) {
+        // ------- FLAT: your original pattern -------
+        const factors = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20];
+        const [n0, d0] = randomCoprimePair(2, 40);
+        const k = pick(factors);
+        P = n0 * k;
+        Q = d0 * k;
+        if (Math.random() < 0.25) P = -P;
 
-      // Strict checker:
-      // - Must be a fraction (not just a decimal), unless true answer is an integer (ANS_Q===1)
-      // - Must be in lowest terms: gcd(|a|,|b|)===1
-      // - After normalizing sign and reducing, must equal (ANS_P/ANS_Q)
+        promptLatex = `${texFrac(P, Q)}`;            // e.g. \dfrac{24}{36}
+        textPrompt = `Simplify: ${P}/${Q}`;
+      } else {
+        // ------- NESTED: simpler integers -------
+        // Two patterns:
+        //  A) (a/b)/c  ==> a/(b*c)
+        //  B) a/(b/c)  ==> (a*c)/b
+        const pattern = Math.random() < 0.5 ? "overC" : "overBoverC";
+
+        // keep numbers small & coprime where it matters
+        const [a, b] = randomCoprimePair(2, 12);
+        const c = randInt(2, 12);
+
+        if (pattern === "overC") {
+          // (a/b)/c → a/(b*c)
+          const sign = Math.random() < 0.25 ? -1 : 1; // random sign on numerator
+          P = sign * a;
+          Q = b * c;
+          promptLatex = texFrac(texFrac(sign * a, b), c);      // \dfrac{\dfrac{a}{b}}{c}
+          textPrompt = `Simplify: (${sign * a}/${b})/${c}`;
+        } else {
+          // a/(b/c) → (a*c)/b
+          const sign = Math.random() < 0.25 ? -1 : 1;
+          P = sign * (a * c);
+          Q = b;
+          promptLatex = texFrac(a, texFrac(b, c));            // \dfrac{a}{\dfrac{b}{c}}
+          textPrompt = `Simplify: ${a}/(${b}/${c})`;
+          if (sign < 0) {
+            // apply sign to overall numerator visually
+            promptLatex = texFrac("-" + a, texFrac(b, c));
+          }
+        }
+      }
+
+      // ---------- canonical answer & checker ----------
+      const [ANS_P, ANS_Q] = reduceFraction(P, Q);     // denominator positive
+      const answer = formatFraction(ANS_P, ANS_Q);
+
       const checker = (user) => {
         const parsed = parseFraction(user);
         if (!parsed) return false;
-
         let [a, b] = parsed;
-        // If user gave a plain integer while the correct answer is NOT an integer → reject
-        if (ANS_Q !== 1 && b === 1) return false;
-
-        // Lowest-terms check first
+        if (ANS_Q !== 1 && b === 1) return false;             // must be a fraction unless integer is correct
         const g0 = gcd(Math.abs(a), Math.abs(b));
-        if (g0 !== 1) return false;
-
-        // Normalize sign to denominator-positive & compare
+        if (g0 !== 1) return false;                           // lowest terms
         const [A, B] = reduceFraction(a, b);
         return A === ANS_P && B === ANS_Q;
       };
 
       return {
-        prompt: `Simplify: ${P}/${Q}`,
+        prompt: textPrompt,
+        promptLatex: `\\text{Simplify:}\\;${promptLatex}`,   // render with KaTeX
         answer,
         checker,
       };
     }
+
 
     case "mul_of_5": 
     { const a = pick([5, 15, 25]); 
@@ -1064,8 +1469,50 @@ function genQuestion(topic) {
 
 
     case "inequalities": { const a = pick([2,3,4,5,-2,-3]); const b = randInt(-10, 10); const c = randInt(-10, 10); let bound = (c - b) / a; const dir = a > 0 ? "<" : ">"; const fmt = (n)=> Number.isInteger(n)? `${n}` : n.toFixed(2); return { prompt: `Solve: ${a}x ${b>=0?"+":"-"} ${Math.abs(b)} ${"<"} ${c}`.replace("<", dir), answer: `x ${dir} ${fmt(bound)}` }; }
-    case "binomial_expand": { const a = randInt(-5,5); const pow = pick([2,3]); const sign = a>=0? "+" : "-"; const A = Math.abs(a); let expansion = ""; if (pow===2) expansion = `x² ${a>=0?"+":"-"} ${2*A}x + ${A*A}`; else expansion = `x³ ${a>=0?"+":"-"} ${3*A}x² + ${3*A*A}x ${a>=0?"+":"-"} ${A*A*A}`; return { prompt: `Expand: (x ${sign} ${A})^${pow}` , answer: expansion }; }
+    case "binomial_expand": {
+      // a can be positive or negative; bias to non-zero
+      const Aabs = randInt(1, 6);
+      const a = Math.random() < 0.5 ? Aabs : -Aabs; // negative sometimes, not always
+      const n = pick([2, 3, 4, 5, 6]);
 
+      const signToken = a >= 0 ? "+" : "−";
+      const A = Math.abs(a);
+
+      // Full expansions kept ONLY for n=2 or 3 (as requested)
+      if (n === 2) {
+        const expansion = `x² ${a >= 0 ? "+" : "−"} ${2 * A}x + ${A * A}`;
+        return {
+          prompt: `Expand: (x ${signToken} ${A})²`,
+          answer: expansion,
+          checker: (user) => user.replace(/\s+/g, "") === expansion.replace(/\s+/g, ""),
+        };
+      }
+      if (n === 3) {
+        const expansion =
+          `x³ ${a >= 0 ? "+" : "−"} ${3 * A}x² + ${3 * A * A}x ${a >= 0 ? "+" : "−"} ${A * A * A}`;
+        return {
+          prompt: `Expand: (x ${signToken} ${A})³`,
+          answer: expansion,
+          checker: (user) => user.replace(/\s+/g, "") === expansion.replace(/\s+/g, ""),
+        };
+      }
+
+      // For n = 4..6 → ask for the coefficient of x^k
+      const k = randInt(0, n); // exponent to ask for
+      // In (x + a)^n, coeff of x^k equals C(n,k) * a^(n-k)
+      const coeff = nCk(n, k) * Math.sign(a) ** (n - k) * Math.pow(Math.abs(a), n - k);
+
+      return {
+        prompt: `In (x ${signToken} ${A})^${n}, what is the coefficient of x^${k}?`,
+        answer: String(coeff),
+        checker: (user) => {
+          const v = Number(user.trim());
+          return Number.isFinite(v) && v === coeff;
+        },
+      };
+    }
+
+    
     // Equations
     case "suvat_solve": {
       const eq = pick(["s=ut+0.5at^2","v=u+at","v^2=u^2+2as"]);
@@ -1081,47 +1528,95 @@ function genQuestion(topic) {
       const answer = Number.isFinite(ans) ? String(Math.round(ans*100)/100) : ""; return { prompt, answer };
     }
     case "speed_basic": {
-      // Choose which variable is unknown
+      // unknown: one of 'speed' v, 'distance' s, 'time' t
       const target = pick(["speed", "distance", "time"]);
-      let prompt, acceptable;
 
+      // choose tiny integers that divide cleanly
+      let v, s, t;
       if (target === "speed") {
-        prompt = "(speed = ?)";
-        acceptable = ["s/t"];                        // only s over t
+        t = randInt(2, 12);
+        v = randInt(2, 12);
+        s = v * t;
       } else if (target === "distance") {
-        prompt = "(distance = ?)";
-        acceptable = ["vt", "v*t", "t*v"];          // allow implicit or explicit mult
+        v = randInt(2, 12);
+        t = randInt(2, 12);
+        s = v * t;
       } else { // time
-        prompt = "(time = ?)";
-        acceptable = ["s/v"];                        // only s over v
+        v = randInt(2, 12);
+        t = randInt(2, 12);
+        s = v * t;
       }
 
-      // Custom checker for this question
+      let prompt, numericAnswer;
+      if (target === "speed") {
+        prompt = `If distance = ${s} and time = ${t}, what is speed?`;
+        numericAnswer = v;
+      } else if (target === "distance") {
+        prompt = `If speed = ${v} and time = ${t}, what is distance?`;
+        numericAnswer = s;
+      } else {
+        prompt = `If speed = ${v} and distance = ${s}, what is time?`;
+        numericAnswer = t;
+      }
+
+      return {
+        prompt,
+        answer: String(numericAnswer),
+        checker: (user) => Number(user) === numericAnswer,
+      };
+    }
+    case "trig_inverse_recall": {
+      // mode: ask in degrees OR radians (answer format matches)
+      const mode = pick(["deg", "rad"]);
+      const invName = pick(["arcsin", "arccos", "arctan", "sin⁻¹", "cos⁻¹", "tan⁻¹"]);
+
+      // exact-value pool (only defined values)
+      const pool = [
+        { f: "sin", val: "0", deg: 0, rad: "0" },
+        { f: "sin", val: "1/2", deg: 30, rad: "π/6" },
+        { f: "sin", val: "sqrt(2)/2", deg: 45, rad: "π/4" },
+        { f: "sin", val: "sqrt(3)/2", deg: 60, rad: "π/3" },
+        { f: "sin", val: "1", deg: 90, rad: "π/2" },
+
+        { f: "cos", val: "1", deg: 0, rad: "0" },
+        { f: "cos", val: "sqrt(3)/2", deg: 30, rad: "π/6" },
+        { f: "cos", val: "sqrt(2)/2", deg: 45, rad: "π/4" },
+        { f: "cos", val: "1/2", deg: 60, rad: "π/3" },
+        { f: "cos", val: "0", deg: 90, rad: "π/2" },
+
+        { f: "tan", val: "0", deg: 0, rad: "0" },
+        { f: "tan", val: "1/sqrt(3)", deg: 30, rad: "π/6" },
+        { f: "tan", val: "1", deg: 45, rad: "π/4" },
+        { f: "tan", val: "sqrt(3)", deg: 60, rad: "π/3" },
+        // (exclude 90° / π/2 where tan undefined)
+      ];
+
+      // map inverse label to base function
+      const invToBase = (name) =>
+        name.startsWith("arc") ? name.slice(3) : name.slice(0, 3); // arcsin→sin, sin⁻¹→sin
+
+      const base = invToBase(invName); // "sin"|"cos"|"tan"
+      const candidates = pool.filter(p => p.f === base);
+      const pickOne = pick(candidates);
+
+      const prettyFn = invName; // e.g., "arcsin" or "sin⁻¹"
+      const prompt = `${prettyFn}(${pickOne.val})`;
+
+      const ans = mode === "deg" ? `${pickOne.deg}°` : pickOne.rad;
+      const acceptable = mode === "deg"
+        ? [String(pickOne.deg), `${pickOne.deg}°`]
+        : [pickOne.rad, pickOne.rad.replace("π", "pi")];
+
+      // allow some common equivalent forms
       const checker = (user) => {
-        const norm = (user || "")
-          .replace(/\s+/g, "")
-          .replace(/×/g, "*")
-          .replace(/·/g, "*")
-          .replace(/÷/g, "/");
-
-        // Only allow s, v, t, parentheses and * or /
-        if (!/^[svt()*/]+$/i.test(norm)) return false;
-
-        // Normalize trivial parentheses like (s)/t -> s/t
-        const cleaned = norm.replace(/[()]/g, "").toLowerCase();
-
-        // Accept either implicit or explicit multiplication for distance
-        const alts = new Set(
-          acceptable
-            .map(s => s.replace(/\s+/g,""))
-            .flatMap(s => s === "vt" ? ["vt","v*t","t*v","t*v"] : [s])
-        );
-
-        return alts.has(cleaned);
+        const u = (user || "").trim().toLowerCase().replace(/\s+/g, "");
+        const set = new Set(acceptable.map(x => x.toLowerCase().replace(/\s+/g, "")));
+        return set.has(u);
       };
 
-      return { prompt, answer: acceptable[0], acceptableAnswers: acceptable, checker };
+      return { prompt, answer: ans, acceptableAnswers: acceptable, checker };
     }
+
     case "units_convert": { const mode = pick(["k2m","m2k"]); if (mode==="k2m") { const v = randInt(10, 120); const ms = Math.round((v * 1000/3600)*100)/100; return { prompt: `Convert ${v} km/h to m/s`, answer: String(ms) }; } else { const v = randInt(3, 40); const k = Math.round((v * 3.6)*100)/100; return { prompt: `Convert ${v} m/s to km/h`, answer: String(k) }; } }
 
     // Formulae (answers to 2 d.p.)
@@ -2065,6 +2560,351 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     );
   }
 
+// ===== CircleDiagram (replacement) ==========================================
+  function CircleDiagram(diagram) {
+    const {
+      // geometry
+      points = [],              // [{name:'A',deg:30} or {name:'X', x:.., y:..}, ...]
+      chords = [],              // [["A","B"],["C","D"]]
+      radii = [],               // [["O","A"],["O","B"]]
+      tangent = null,           // { at:'T' }  OR  { at:'T', externalFromT:true, pDist?:1.4 } (for tangent–secant)
+      secantLines = [],         // e.g. [["A","B"],["C","D"]] → two secants from one external P
+      // annotation
+      angleLabels = [],         // [{at:'B', from:'C', to:'T', text:'50°', reflex?:true}]
+      rightAngles = [],         // reserved (we no longer use square in semicircle)
+      equalTicks = [],          // [["PA","PB"]]  (unique keys added internally)
+      sideLabels = [],          // [{of:'AX', text:'AX=4'}, {of:'PA', text:'PA=5'}]  (supports subsegments)
+      // theta
+      thetaAt = null,           // 'A'|'B'|'C'|'O'|'T'|'P' ...
+      thetaUsesChord = null,    // 'TC' → show θ as angle between tangent at T and chord TC
+    } = diagram;
+
+    // --- canvas ---------------------------------------------------------------
+    const W = 380, H = 280, M = 22;
+    const cx = W / 2, cy = H / 2 + 6;
+    const R = Math.min(W, H) / 2 - 2 * M;
+
+    // --- points map -----------------------------------------------------------
+    const byName = {};
+    points.forEach(p => {
+      if (p.name === "O") byName.O = { x: cx, y: cy };
+      else if (typeof p.deg === "number") {
+        const th = (p.deg - 90) * Math.PI / 180;
+        byName[p.name] = { x: cx + R * Math.cos(th), y: cy + R * Math.sin(th) };
+      } else if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
+        byName[p.name] = { x: p.x, y: p.y };
+      }
+    });
+
+    // utilities
+    const mid = (P, Q) => ({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 });
+    const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+    const len = (v) => Math.hypot(v.x, v.y) || 1;
+    const norm = (v) => { const L = len(v); return { x: v.x / L, y: v.y / L }; };
+    const perp = (v) => ({ x: -v.y, y: v.x });
+    const dot = (a, b) => a.x * b.x + a.y * b.y;
+
+    // line intersection (infinite lines)
+    function lineIntersect(P1, P2, Q1, Q2) {
+      const x1 = P1.x, y1 = P1.y, x2 = P2.x, y2 = P2.y, x3 = Q1.x, y3 = Q1.y, x4 = Q2.x, y4 = Q2.y;
+      const D = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+      if (Math.abs(D) < 1e-8) return null;
+      const px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / D;
+      const py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / D;
+      return { x: px, y: py };
+    }
+
+    // intersection of circle and line P + t*u (returns two points sorted by t)
+    function circleLineHits(P, u) {
+      const oc = sub(P, { x: cx, y: cy });
+      const A = dot(u, u);
+      const B = 2 * dot(oc, u);
+      const C = dot(oc, oc) - R * R;
+      const disc = B * B - 4 * A * C;
+      if (disc < 0) return null;
+      const s = Math.sqrt(disc);
+      const t1 = (-B - s) / (2 * A);
+      const t2 = (-B + s) / (2 * A);
+      const p1 = { x: P.x + t1 * u.x, y: P.y + t1 * u.y };
+      const p2 = { x: P.x + t2 * u.x, y: P.y + t2 * u.y };
+      return t1 <= t2 ? [{ pt: p1, t: t1 }, { pt: p2, t: t2 }] : [{ pt: p2, t: t2 }, { pt: p1, t: t1 }];
+    }
+
+    // build tangent line(s) and external point P when required
+    const tangentLines = [];
+    if (tangent?.at) {
+      const T = byName[tangent.at];
+      if (T) {
+        const vOT = sub(T, { x: cx, y: cy });
+        const uTan = norm(perp(vOT));
+        // infinite tangent guide (dashed)
+        const L = 900;
+        tangentLines.push({ x1: T.x - uTan.x * L, y1: T.y - uTan.y * L, x2: T.x + uTan.x * L, y2: T.y + uTan.y * L, dashed: true });
+        // optional external point P placed along tangent at distance pDist*R
+        if (tangent.externalFromT) {
+          const dist = (tangent.pDist ?? 1.4) * R;
+          const P = { x: T.x + uTan.x * dist, y: T.y + uTan.y * dist };
+          byName.P = P;  // expose as named point
+        }
+      }
+    }
+
+    // ---- robust secants from an external point P ----
+    // We compute P once, then for each secant we compute both circle hits and draw a long line.
+    // Also expose the hits so labels like PA/PB can be placed at the right segments.
+    const secants = [];   // [{P,u,hits:[{pt,t},{pt,t}]}]
+    let Pext = byName.P || null;
+
+    // If two secants are given, compute P as their line intersection
+    if (!Pext && secantLines.length >= 2) {
+      const [a1, b1] = secantLines[0], [a2, b2] = secantLines[1];
+      const A = byName[a1], B = byName[b1], C = byName[a2], D = byName[b2];
+      const P = (A && B && C && D) ? lineIntersect(A, B, C, D) : null;
+      if (P) { Pext = P; byName.P = Pext; }
+    }
+
+    // If tangent.externalFromT created P at T, use that
+    if (!Pext && byName.P) Pext = byName.P;
+
+    // Build each secant ray from Pext toward its chord direction
+    if (Pext) {
+      secantLines.forEach(([m, n]) => {
+        const M = byName[m], N = byName[n];
+        if (!M || !N) return;
+        const u = norm(sub(N, M)); // direction along chord
+        const hits = circleLineHits(Pext, u); // two points, ordered by t
+        secants.push({ P: Pext, u, hits });
+      });
+    }
+
+
+    // angle arc with smart radius/label offset (bigger for circumference angles)
+    function angleTextLabel(atName, fromName, toName, text) {
+      const V = atName === "O" ? { x: cx, y: cy } : byName[atName];
+      const P1 = byName[fromName], P2 = byName[toName];
+      if (!V || !P1 || !P2) return null;
+      const u1 = norm(sub(P1, V)), u2 = norm(sub(P2, V));
+      let bis = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const L = Math.hypot(bis.x, bis.y);
+      if (L < 1e-6) { bis = { x: 0, y: -1 }; } else { bis.x /= L; bis.y /= L; }
+      const d = atName === "O" ? 26 : 20;
+      return (
+        <text key={`ang-${atName}-${fromName}-${toName}-${text}`}
+          x={V.x + bis.x * d} y={V.y + bis.y * d}
+          fontSize="12" textAnchor="middle" dominantBaseline="middle" fill="#e5e7eb">
+          {text}
+        </text>
+      );
+    }
+
+    // θ as tangent–chord angle at T
+    function thetaArcAtTUsingChord(pairLabel) {
+      if (!pairLabel || pairLabel.length !== 2) return null;
+      const at = pairLabel[0], other = pairLabel[1];
+      const T = byName[at], C = byName[other];
+      if (!T || !C || tangentLines.length === 0) return null;
+
+      const tv = norm({ x: tangentLines[0].x2 - tangentLines[0].x1, y: tangentLines[0].y2 - tangentLines[0].y1 });
+      const cv = norm(sub(C, T));
+      const rr = 18;
+
+      const a1 = Math.atan2(tv.y, tv.x), a2 = Math.atan2(cv.y, cv.x);
+      let d = a2 - a1; while (d <= -Math.PI) d += 2 * Math.PI; while (d > Math.PI) d -= 2 * Math.PI;
+      const xs = T.x + rr * Math.cos(a1), ys = T.y + rr * Math.sin(a1);
+      const xe = T.x + rr * Math.cos(a1 + d), ye = T.y + rr * Math.sin(a1 + d);
+      const path = `M ${xs} ${ys} A ${rr} ${rr} 0 ${Math.abs(d) > Math.PI ? 1 : 0} ${(d > 0) ? 1 : 0} ${xe} ${ye}`;
+      const m = (a1 + a1 + d) / 2, lx = T.x + (rr + 10) * Math.cos(m), ly = T.y + (rr + 10) * Math.sin(m);
+
+      return (
+        <g key="theta-arc-T">
+          <path d={path} fill="none" stroke="#9ca3af" strokeWidth="1.5" />
+          <text x={lx} y={ly} fontSize="14" textAnchor="middle" dominantBaseline="middle" fill="#f3f4f6">θ</text>
+        </g>
+      );
+    }
+
+    // generic θ (bisector) – used when not tangent–chord
+    function thetaLabel(atName) {
+      const V = atName === "O" ? { x: cx, y: cy } : byName[atName];
+      if (!V) return null;
+      let dir = { x: 0, y: -1 };
+
+      if (atName === "T" && tangentLines.length) {
+        const vRad = norm(sub(V, { x: cx, y: cy }));
+        const vTan = norm({ x: tangentLines[0].x2 - tangentLines[0].x1, y: tangentLines[0].y2 - tangentLines[0].y1 });
+        const bis = norm({ x: vRad.x + vTan.x, y: vRad.y + vTan.y });
+        if (isFinite(bis.x)) dir = bis;
+      } else {
+        const arms = [];
+        chords.forEach(([a, b]) => { if (a === atName) arms.push(byName[b]); else if (b === atName) arms.push(byName[a]); });
+        radii.forEach(([o, p]) => { if (p === atName) arms.push({ x: cx, y: cy }); });
+        if (arms.length >= 2 && arms[0] && arms[1]) {
+          const u1 = norm(sub(arms[0], V)), u2 = norm(sub(arms[1], V));
+          const bis = norm({ x: u1.x + u2.x, y: u1.y + u2.y });
+          if (isFinite(bis.x)) dir = bis;
+        }
+      }
+      const d = 18;
+      return <text key={`theta-${atName}`} x={V.x + dir.x * d} y={V.y + dir.y * d} fontSize="14" textAnchor="middle" dominantBaseline="middle" fill="#f3f4f6">θ</text>;
+    }
+
+    // parse segment id like 'AB' or 'AX' or 'PA'
+    function segEnds(seg) {
+      const a = seg[0], b = seg[1];
+      return [byName[a], byName[b]];
+    }
+
+    // sub/whole segment label
+    function segmentLabel(seg, text, idx, offset = 12) {
+      const [P, Q] = segEnds(seg);
+      if (!P || !Q) return null;
+      const m = mid(P, Q), u = norm(sub(Q, P)), n = perp(u);
+      return (
+        <text key={`len-${seg}-${idx}`} x={m.x + n.x * offset} y={m.y + n.y * offset}
+          fontSize="12" textAnchor="middle" dominantBaseline="middle" fill="#e5e7eb">
+          {text}
+        </text>
+      );
+    }
+
+    // small tick on a segment (unique key)
+    function segmentTick(seg, idx) {
+      const [P, Q] = segEnds(seg);
+      if (!P || !Q) return null;
+      const m = mid(P, Q), u = norm(sub(Q, P)), n = perp(u), t = 8;
+      const a = { x: m.x - n.x * t, y: m.y - n.y * t }, b = { x: m.x + n.x * t, y: m.y + n.y * t };
+      return <line key={`tick-${seg}-${idx}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#e5e7eb" strokeWidth="2" />;
+    }
+
+    // Label along a ray segment from P to Q (midpoint with small outward offset)
+    function raySegmentLabel(P, Q, text, key, outward = 10) {
+      const m = mid(P, Q);
+      const u = norm(sub(Q, P));
+      const n = perp(u);
+      return (
+        <text key={key} x={m.x + n.x * outward} y={m.y + n.y * outward}
+          fontSize="12" textAnchor="middle" dominantBaseline="middle" fill="#e5e7eb">
+          {text}
+        </text>
+      );
+    }
+
+
+    // --- build svg ------------------------------------------------------------
+    return (
+      <div className="mt-2 flex justify-center">
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+          {/* Circle */}
+          <circle cx={cx} cy={cy} r={R} fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.85)" strokeWidth="2" />
+
+          {/* Radii */}
+          {radii.map(([o, p], i) => byName[p] && (
+            <line key={`rad-${i}`} x1={cx} y1={cy} x2={byName[p].x} y2={byName[p].y} stroke="#a7f3d0" strokeWidth="2" />
+          ))}
+
+          {/* Chords */}
+          {chords.map(([a, b], i) => (byName[a] && byName[b]) && (
+            <line key={`ch-${i}`} x1={byName[a].x} y1={byName[a].y} x2={byName[b].x} y2={byName[b].y} stroke="#10b981" strokeWidth="2" />
+          ))}
+
+          {/* Secants (infinite lines through external P) */}
+          {secants.map((s, i) => {
+            const L = 1200;
+            return (
+              <line
+                key={`sec-${i}`}
+                x1={s.P.x - s.u.x * L} y1={s.P.y - s.u.y * L}
+                x2={s.P.x + s.u.x * L} y2={s.P.y + s.u.y * L}
+                stroke="#e5e7eb" strokeWidth="2"
+              />
+            );
+          })}
+
+          {/* Tangent (dashed guide) */}
+          {tangentLines.map((t, i) => (
+            <line key={`tan-${i}`} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+              stroke="#22c55e" strokeWidth="2" strokeDasharray={t.dashed ? "6 6" : undefined} />
+          ))}
+
+          {/* Angle labels */}
+          {angleLabels.map((al, i) => angleTextLabel(al.at, al.from ?? "A", al.to ?? "B", al.text))}
+
+          {/* Ticks */}
+          {equalTicks.map((pair, i) => (
+            <g key={`ticks-${i}`}>
+              {segmentTick(pair[0], i * 2)}
+              {segmentTick(pair[1], i * 2 + 1)}
+            </g>
+          ))}
+
+          {/* Length labels (supports 'AX', 'PA', etc.) */}
+          {sideLabels.map((s, i) => {
+            const id = s.of;
+
+            // 1) PA / PB / PC / PD using secant hits (near/far from P)
+            if (/^P[ABCD]$/.test(id) && secants.length > 0 && byName.P) {
+              // pick the secant that contains the target letter in its chord definition
+              const target = id[1]; // 'A'|'B'|'C'|'D'
+              const sec = secants.find(sc =>
+                (secantLines[secants.indexOf(sc)] || []).some(nm => nm.includes(target))
+              ) || secants[0];
+
+              if (sec && sec.hits && sec.hits.length === 2) {
+                const near = sec.hits[0].pt, far = sec.hits[1].pt;
+                const Q = (target === 'A' || target === 'C') ? near : far;
+                return raySegmentLabel(sec.P, Q, s.text, `ray-${id}-${i}`);
+              }
+            }
+
+            // 2) PT: if tangent created P and point T exists, label segment PT
+            if (id === "PT" && byName.P && byName.T) {
+              return raySegmentLabel(byName.P, byName.T, s.text, `ray-PT-${i}`);
+            }
+
+            // 3) AX/BX/CX/DX for intersecting chords inside: compute X, then label
+            if (/^[ABCD]X$/.test(id)) {
+              // find the two chords to intersect (assumes exactly two in diagram)
+              if (chords.length >= 2) {
+                const [u1, v1] = chords[0], [u2, v2] = chords[1];
+                const U1 = byName[u1], V1 = byName[v1], U2 = byName[u2], V2 = byName[v2];
+                const X = (U1 && V1 && U2 && V2) ? lineIntersect(U1, V1, U2, V2) : null;
+                if (X) {
+                  const letter = id[0];
+                  const P0 = byName[letter];
+                  if (P0) return segmentLabel(letter + "X", s.text, i);
+                }
+              }
+            }
+
+            // fallback: simple chord segment label
+            return segmentLabel(id, s.text, i);
+          })}
+          {/* Points */}
+          {Object.entries(byName).map(([name, P]) => {
+            if (name === "O") return (
+              <g key="O">
+                <circle cx={P.x} cy={P.y} r="3.5" fill="#e5e7eb" />
+                <text x={P.x + 10} y={P.y - 6} fontSize="12" fill="#e5e7eb">O</text>
+              </g>
+            );
+            return (
+              <g key={name}>
+                <circle cx={P.x} cy={P.y} r="3.5" fill="#e5e7eb" />
+                <text x={P.x + 8} y={P.y - 6} fontSize="12" fill="#e5e7eb">{name}</text>
+              </g>
+            );
+          })}
+
+          {/* θ */}
+          {thetaAt === "T" && thetaUsesChord
+            ? thetaArcAtTUsingChord(thetaUsesChord)
+            : (thetaAt && thetaLabel(thetaAt))}
+        </svg>
+      </div>
+    );
+  }
+
+
 
 
   const poolRef = useRef([]);
@@ -2080,6 +2920,41 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   useEffect(() => { refillPool(); }, []); // on session start
 
 // run every time current question changes → re-typeset MathJax
+  const [lastWasCorrect, setLastWasCorrect] = useState(null);
+
+  // ADD: a pure one-shot checker we can call from Enter or the primary button
+  const checkOnce = () => {
+    if (!current) return false;
+
+    // Prefer a custom checker if provided
+    let ok = false;
+    if (typeof current.checker === "function") {
+      ok = !!current.checker(answer);
+    } else {
+      // Fallback: compare to acceptableAnswers/answer
+      const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, "");
+      const cand = norm(answer);
+      const accepts = new Set(
+        (current.acceptableAnswers ?? [current.answer ?? ""])
+          .map(norm)
+      );
+      // try numeric equality too (for numeric answers)
+      if (accepts.has(cand)) ok = true;
+      else {
+        const aNum = Number(answer);
+        if (Number.isFinite(aNum)) {
+          const target = Number(current.answer);
+          if (Number.isFinite(target) && aNum === target) ok = true;
+        }
+      }
+    }
+
+    setAttempts(a => a + 1);
+    setState(ok ? "correct" : "wrong");
+    setLastWasCorrect(ok);
+    return ok;
+  };
+
   const [current, setCurrent] = useState(null);
   const [answer, setAnswer] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
@@ -2235,37 +3110,54 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
             <div>Attempts: {attempts}</div>
           </div>
         </div>
-
+        
         <div className="mt-6 text-center">
           {state!=="finished" ? (
             <>
               <div className="text-xs uppercase tracking-widest text-white/40">{current ? (topicMap.get(current.id)?.label || "") : ""}</div>
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={(hidden ? "hidden" : current?.prompt) || "idle"}
+                  key={(hidden ? "hidden" : current?.id) || "idle"}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.08 }}
-                  className="text-3xl sm:text-4xl font-semibold tracking-tight mt-2 min-h-[2.6em] flex items-center justify-center"
                 >
-                  {hidden ? "" : (current?.prompt || "Preparing…")}
-                </motion.div>
+                  <div className="text-3xl sm:text-4xl font-semibold tracking-tight mt-2 min-h-[2.6em] flex items-center justify-center">
+                    {hidden ? "" : (current?.prompt || "Preparing…")}
+                  </div>
 
-                {current?.id === "tri_special" && current?.diagram && !hidden && (
-                  <TriangleDiagram
-                    type={current.diagram.type}
-                    lengths={current.diagram.lengths}
-                    labels={current.diagram.labels}
-                    angleHint={current.diagram.angleHint}
-                    isoRight={!!current.diagram.isoRight}
-                    thetaAt={current.diagram.thetaAt} 
-                  />
-                )}
+                  {!hidden && current?.diagram?.type === "triangle" && (
+                    <TriangleDiagram {...current.diagram} />
+                  )}
+                  {!hidden && current?.diagram?.type === "circle" && (
+                    <CircleDiagram {...current.diagram} />
+                  )}
+                </motion.div>
               </AnimatePresence>
 
-              <form onSubmit={submit} className="mt-4 flex items-center justify-center gap-2">
-                <input
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!hidden && phase !== "next") {
+                    const ok = checkOnce();
+                    if (ok) {
+                      // Correct → auto skip
+                      next();                       // advance to the next question
+                      setAnswer("");
+                      setState("idle");
+                      setPhase("go");
+                      setLastWasCorrect(null);
+                    } else {
+                      // Wrong → go to reveal phase
+                      setPhase("reveal");
+                    }
+                  }
+  
+                }}
+                className="mt-4 flex items-center justify-center gap-2"
+              >             <input
                   ref={inputRef}
                   value={answer}
                   onChange={(e) => setAnswer(beautifyInline(e.target.value))}
@@ -2277,15 +3169,53 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                 />
 
                 {/* Primary action cycles: Go → Reveal answer → Next */}
-                <button className={btnPrimary} type="submit">
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  onClick={() => {
+                    if (phase === "go") {
+                      const ok = checkOnce();
+                      if (ok) {
+                        // correct → skip immediately
+                        next();
+                        setAnswer("");
+                        setState("idle");
+                        setPhase("go");
+                        setLastWasCorrect(null);
+                      } else {
+                        // wrong → go to reveal stage
+                        setPhase("reveal");
+                      }
+                    } else if (phase === "reveal") {
+                      // first press of Reveal → show answer
+                      if (state !== "revealed") {
+                        setState("revealed");
+                      } else {
+                        // second press (after answer is revealed) → move on
+                        next();
+                        setAnswer("");
+                        setState("idle");
+                        setPhase("go");
+                        setLastWasCorrect(null);
+                      }
+                    } else if (phase === "next") {
+                      next();
+                      setAnswer("");
+                      setState("idle");
+                      setPhase("go");
+                      setLastWasCorrect(null);
+                    }
+                  }}
+                >
                   {phase === "go" && (<><Play size={16} /> Go</>)}
-                  {phase === "reveal" && (<><Eye size={16} /> Reveal</>)}
+                  {phase === "reveal" && state !== "revealed" && (<><Eye size={16} /> Reveal</>)}
+                  {phase === "reveal" && state === "revealed" && (<><Check size={16} /> Next</>)}
                   {phase === "next" && (<><Check size={16} /> Next</>)}
                 </button>
 
                 {/* Secondary: keep a “Check again” button while user is in reveal phase (i.e., after a wrong try) */}
                 {phase === "reveal" && (
-                  <button type="button" onClick={doCheck} className={btnGhost}>
+                  <button type="button" onClick={checkOnce} className={btnGhost}>
                     <Check size={16} /> Again
                   </button>
                 )}
@@ -2315,13 +3245,79 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                 ))}
               </div>
 
-              <div className="h-10 mt-3">
-                <AnimatePresence>
-                  {state==="correct" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="inline-flex items-center gap-2 text-emerald-400"><Check size={18}/> Correct</motion.div>)}
-                  {state==="wrong" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="text-red-400">Incorrect, try again.</motion.div>)}
-                  {state==="revealed" && (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-6}} transition={{duration:0.08}} className="text-white/70">Answer: <span className="text-white font-semibold">{current?.answer}</span></motion.div>)}
+              <div className="mt-3 min-h-[2.5rem]">
+                <AnimatePresence mode="sync">
+                  {/* PHASE: user moved into reveal stage (but hasn't revealed the answer yet) */}
+                  {phase === "reveal" && (
+                    <motion.div
+                      key="reveal-info"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      className={lastWasCorrect ? "text-emerald-400" : "text-red-400"}
+                    >
+                      {lastWasCorrect ? "Your last attempt was correct." : "Your last attempt was incorrect."}{" "}
+                      Press <span className="font-semibold">Reveal</span> to see the answer.
+                    </motion.div>
+                  )}
+
+                  {/* STATE: immediate feedback when not in reveal phase */}
+                  {state === "correct" && phase !== "reveal" && (
+                    <motion.div
+                      key="fb-correct"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      className="inline-flex items-center gap-2 text-emerald-400"
+                    >
+                      <Check size={18} /> Correct
+                    </motion.div>
+                  )}
+
+                  {state === "wrong" && phase !== "reveal" && (
+                    <motion.div
+                      key="fb-wrong"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      className="text-red-400"
+                    >
+                      Incorrect, try again.
+                    </motion.div>
+                  )}
+
+                  {/* STATE: revealed — show the actual answer and (optionally) an explanation */}
+                  {state === "revealed" && (
+                    <motion.div
+                      key="fb-revealed"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      className="text-white/70"
+                    >
+                      Answer: <span className="text-white font-semibold">{current?.answer}</span>
+                      {current?.explanation && (
+                        <motion.pre
+                          key="fb-revealed-expl"
+                          className="mt-2 whitespace-pre-wrap text-xs text-white/60"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.12, ease: "easeOut" }}
+                        >
+                          {current.explanation}
+                        </motion.pre>
+                      )}
+                    </motion.div>
+                  )}
                 </AnimatePresence>
               </div>
+
+
             </>
           ) : (
             <SessionSummary onExit={onExit} />
@@ -3208,6 +4204,72 @@ function TopicRowBar({ index, label, rel, relPct, sec, attempts, sessions }) {
 
 // Map attempts count (0..max) to a % width (6..100) so even 1 attempt is visible
 // ---- Visual helpers (drop-in) ----\
+function explainDivisibility(N, d) {
+  const digits = String(Math.abs(N)).split("").map(Number);
+  const last   = digits[digits.length - 1];
+  const last2  = digits.slice(-2).join("") || "0";
+  const last3  = digits.slice(-3).join("") || "0";
+  const sum    = digits.reduce((s, x) => s + x, 0);
+  const altSum = digits.reduce((s, x, i) => (i % 2 === 0 ? s + x : s - x), 0); // 11-rule
+  const mod    = ((N % d) + d) % d;
+
+  const yesNo = (ok) => ok ? "Yes" : "No";
+
+  if (d === 2) {
+    const ok = last % 2 === 0;
+    return `Rule for 2: number is even.\nLast digit = ${last} → ${last % 2 === 0 ? "even" : "odd"} → ${yesNo(ok)}.`;
+  }
+
+  if (d === 10) {
+    const ok = last === 0;
+    return `Rule for 10: ends in 0.\nLast digit = ${last} → ${yesNo(ok)}.`;
+  }
+  if (d === 3) {
+    const ok = sum % 3 === 0;
+    return `Rule for 3: sum of digits divisible by 3.\nSum = ${sum} → ${sum} ${ok ? "is" : "is not"} a multiple of 3 → ${yesNo(ok)}.`;
+  }
+  if (d === 9) {
+    const ok = sum % 9 === 0;
+    return `Rule for 9: sum of digits divisible by 9.\nSum = ${sum} → ${sum} ${ok ? "is" : "is not"} a multiple of 9 → ${yesNo(ok)}.`;
+  }
+  if (d === 4) {
+    const n2 = Number(last2);
+    const ok = n2 % 4 === 0;
+    return `Rule for 4: last two digits divisible by 4.\nLast two digits = ${n2} → ${yesNo(n2 % 4 === 0)} → ${yesNo(ok)}.`;
+  }
+  if (d === 8) {
+    const n3 = Number(last3);
+    const ok = n3 % 8 === 0;
+    return `Rule for 8: last three digits divisible by 8.\nLast three digits = ${n3} → ${yesNo(n3 % 8 === 0)} → ${yesNo(ok)}.`;
+  }
+  if (d === 6) {
+    const even = last % 2 === 0;
+    const sum3 = sum % 3 === 0;
+    const ok = even && sum3;
+    return `Rule for 6: divisible by 2 and 3.\nEven? ${even ? "Yes" : "No"}; Sum of digits = ${sum} → ${sum3 ? "multiple of 3" : "not a multiple of 3"} → ${yesNo(ok)}.`;
+  }
+  if (d === 11) {
+    const ok = (Math.abs(altSum) % 11) === 0;
+    return `Rule for 11: alternating sum of digits (odd positions − even positions) is a multiple of 11.\nAlt sum = ${altSum} → ${Math.abs(altSum)} ${ (Math.abs(altSum)%11)===0 ? "is" : "is not"} a multiple of 11 → ${yesNo(ok)}.`;
+  }
+  if (d === 7) {
+    // Show the common classroom trick once or twice; also report true mod for certainty.
+    const step = (n) => {
+      const ld = n % 10;
+      const rest = Math.trunc(n / 10);
+      return rest - 2 * ld;
+    };
+    let s1 = step(Math.abs(N));
+    let s2 = step(Math.abs(s1));
+    const ok = mod === 0;
+    return `One test for 7: take the last digit, double it, subtract from the rest, repeat.\n` +
+           `${Math.abs(N)} → ${s1} → ${s2} … check small number.\n` +
+           `${N} mod 7 = ${mod} → ${yesNo(ok)}.`;
+  }
+  // Fallback generic (shouldn't be hit with the chosen d set)
+  return `Compute ${N} mod ${d} = ${mod} → ${yesNo(mod === 0)}.`;
+}
+
 // Laplace smoothing: accuracy = (correct + 1) / (attempts + 2)
 // Laplace-smoothed accuracy for an entry
 function entryAccOf(e) {
