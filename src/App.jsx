@@ -294,6 +294,7 @@ const CATEGORIES = {
     { id: "powers_mixed", label: "Powers of 2" },
     { id: "divisibility_rules", label: "Divisbility Rule" },
     { id: "sci_rewrite", label: "Divisbility Rule" },
+    { id: "common_multiples", label: "Common multiples in ESAT" },
   ],
   FRACTIONS: [
     { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
@@ -1912,6 +1913,28 @@ function genQuestion(topic) {
     case "cylinder_sa": { const r = randInt(1, 12), h = randInt(1, 20); const val = 2*Math.PI*r*(h + r); return { prompt: `Surface area of closed cylinder, r=${r}, h=${h}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
     case "cone_sa": { const r = randInt(1, 15), l = randInt(r+1, r+15); const val = Math.PI*r*(r + l); return { prompt: `Surface area of cone, r=${r}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
     case "square_pyramid_sa": { const a = randInt(2, 20), l = randInt(2, 25); const val = a*a + 2*a*l; return { prompt: `Surface area of square pyramid, base a=${a}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
+    case "common_multiples": {
+      // allowed ranges
+      const twod = [13, 14, 15, 16, 17, 18, 19];
+      const oned = [3, 4, 5, 6, 7, 8, 9];
+
+      // pick until valid (avoid 19×9)
+      let a, b;
+      do {
+        a = pick(twod);
+        b = pick(oned);
+      } while (a === 19 && b === 9);
+
+      const prompt = `${a} × ${b}`;
+      const ans = String(a * b);
+
+      const checker = (user) => {
+        const u = String(user ?? "").trim();
+        return u === ans;
+      };
+
+      return { prompt, answer: ans, acceptableAnswers: [ans], checker };
+    }
     case "common_frac_to_dec_2dp": {
       // ----- helpers -----
       const to2dp = (x) => Number.isFinite(x) ? (Math.round(x * 100) / 100).toFixed(2) : "";
