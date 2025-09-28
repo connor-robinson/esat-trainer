@@ -24,6 +24,35 @@ import { motion, AnimatePresence } from "framer-motion";
 */
 // create this file if you used 7a
 
+function evalFraction(expr) {
+  if (expr === null || expr === undefined) return NaN;
+
+  const t = String(expr).trim();   // force it to be a string
+
+  // Plain integer or decimal
+  if (/^[+-]?\d+(\.\d+)?$/.test(t)) return Number(t);
+
+  // Simple fraction a/b
+  const m = t.match(/^\s*([+-]?\d+)\s*\/\s*([+-]?\d+)\s*$/);
+  if (m) {
+    const p = Number(m[1]), q = Number(m[2]);
+    if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) return NaN;
+    return p / q;
+  }
+
+  return NaN;
+}
+
+function simplifyUserAnswer(ans) {
+  if (!ans) return "";
+  return String(ans)
+    .replace(/\s+/g, "")
+    .replace(/×|·/g, "*")
+    .replace(/÷/g, "/")
+    .toLowerCase();
+}
+
+
 function TopicRow({ id, label, onAdd }) {
   const { attributes, listeners, setNodeRef, transform } =
     useDraggable({ id: `src-${id}` });
@@ -1528,82 +1557,141 @@ function genQuestion(topic) {
       const answer = Number.isFinite(ans) ? String(Math.round(ans*100)/100) : ""; return { prompt, answer };
     }
     case "speed_basic": {
-      // Decide between word problem or pure formula recall
-      const mode = pick(["word", "formula"]);
+      // two modes: numeric (compute value) or formula recall (type s/t, v*t, s/v)
+      const mode = Math.random() < 0.75 ? "numeric" : "formula";
 
-      if (mode === "word") {
-        // Word problem with numbers
+      // ---------- helpers ----------
+      const fr = (p, q) => ({ p, q }); // fraction object
+      const toMixed = (p, q) => { const g = gcd(p, q); p /= g; q /= g; return { p, q }; };
+      const showFrac = ({ p, q }) => (q === 1 ? String(p) : `${p}/${q}`);
+
+      // evaluate a/b from a string like "7/3" or "2"
+      const numFrom = (aOverB) => evalFraction(aOverB);
+
+      // Accept small integer or simple fraction answers
+      const fracEqual = (user, target) => {
+        const u = evalFraction(user);
+        const t = (typeof target === "string") ? evalFraction(target) : target;
+        return Number.isFinite(u) && Number.isFinite(t) && Math.abs(u - t) < 1e-9;
+      };
+
+      if (mode === "formula") {
+        // quick recall: ask for the formula text
         const target = pick(["speed", "distance", "time"]);
+        let prompt, expected;
 
-        // Allow both integers and fractions for realism
-        let v, s, t;
-        if (target === "speed") {
-          t = randInt(2, 12);
-          v = randInt(2, 12);
-          if (Math.random() < 0.3) v = `${randInt(1, 9)}/${randInt(2, 9)}`; // make v fractional
-          s = evalFraction(v) * t; // compute numeric
-        } else if (target === "distance") {
-          v = randInt(2, 12);
-          if (Math.random() < 0.3) v = `${randInt(1, 9)}/${randInt(2, 9)}`;
-          t = randInt(2, 12);
-          s = evalFraction(v) * t;
-        } else {
-          v = randInt(2, 12);
-          t = randInt(2, 12);
-          if (Math.random() < 0.3) t = `${randInt(1, 9)}/${randInt(2, 9)}`;
-          s = v * evalFraction(t);
-        }
+        if (target === "speed") { prompt = "v = ?"; expected = "s/t"; }
+        else if (target === "distance") { prompt = "s = ?"; expected = "v*t"; }
+        else { prompt = "t = ?"; expected = "s/v"; }
 
-        // Numeric answer (as fraction string if needed)
-        let prompt, numericAnswer;
-        if (target === "speed") {
-          prompt = `If distance = ${s}, and time = ${t}, what is speed?`;
-          numericAnswer = v;
-        } else if (target === "distance") {
-          prompt = `If speed = ${v}, and time = ${t}, what is distance?`;
-          numericAnswer = s;
-        } else {
-          prompt = `If speed = ${v}, and distance = ${s}, what is time?`;
-          numericAnswer = t;
-        }
-
-        return {
-          prompt,
-          answer: String(numericAnswer),
-          checker: (user) => simplifyUserAnswer(user) === simplifyUserAnswer(String(numericAnswer)),
-        };
-      }
-
-      else {
-        // Formula recall (symbolic form)
-        const target = pick(["speed", "distance", "time"]);
-        let prompt, acceptable;
-
-        if (target === "speed") {
-          prompt = "Speed = ?";
-          acceptable = ["s/t"];
-        } else if (target === "distance") {
-          prompt = "Distance = ?";
-          acceptable = ["vt", "v*t", "t*v"];
-        } else {
-          prompt = "Time = ?";
-          acceptable = ["s/v"];
-        }
-
+        // checker: allow variants with *, no spaces, order for v*t vs t*v
         const checker = (user) => {
-          const norm = (user || "")
-            .replace(/\s+/g, "")
-            .replace(/×/g, "*")
-            .replace(/·/g, "*")
-            .replace(/÷/g, "/")
-            .toLowerCase();
-
-          return acceptable.includes(norm);
+          const u = simplifyUserAnswer(user);
+          const ok = new Set(
+            expected === "v*t" ? ["vt", "v*t", "t*v"] :
+              expected === "s/t" ? ["s/t"] :
+                ["s/v"]
+          );
+          return ok.has(u);
         };
 
-        return { prompt, answer: acceptable[0], checker };
+        return { prompt, answer: expected, checker };
       }
+
+      // ---------- numeric mode ----------
+      // choose which variable is unknown
+      const target = pick(["speed", "distance", "time"]);
+
+      // we’ll generate the *shown* numbers first, then compute answer from them.
+      let shownV, shownS, shownT; // these are the values you display in the prompt
+
+      // Base clean integers
+      const v0 = randInt(3, 18);
+      const t0 = randInt(3, 18);
+      const s0 = v0 * t0;
+
+      // Occasionally introduce a simple fraction answer by perturbing one value
+      const fractiony = Math.random() < 0.25;
+
+      if (target === "speed") {
+        // show s and t, ask for v = s/t
+        if (!fractiony) {
+          shownS = s0;
+          shownT = t0;
+        } else {
+          // Make s/t a simple non-integer fraction, reduced
+          // pick small coprime p/q and scale both modestly
+          const q = randInt(2, 9), p = q * randInt(2, 12) + randInt(1, q - 1);
+          const g = gcd(p, q);
+          shownS = p / g; // still want integers in prompt → scale up by a factor
+          shownT = q / g;
+          const k = randInt(2, 9);
+          shownS *= k; shownT *= k;                 // integers in prompt
+        }
+      } else if (target === "distance") {
+        // show v and t, ask for s = v*t
+        if (!fractiony) {
+          shownV = v0;
+          shownT = t0;
+        } else {
+          // keep v integer, make t a simple fraction a/b; display integers by scaling both sides
+          const b = randInt(2, 9), a = randInt(1, b - 1) + b * randInt(1, 4);
+          const g = gcd(a, b);
+          const aa = a / g, bb = b / g;
+          // display: v and t as (aa/bb) by multiplying both with bb so we show integers
+          shownV = v0 * aa;
+          shownT = bb; // so s = v0*aa * (bb) → answer still integer-ish after divide later
+        }
+      } else { // time
+        // show s and v, ask for t = s/v
+        if (!fractiony) {
+          shownS = s0;
+          shownV = v0;
+        } else {
+          // choose simple non-integer ratio s/v
+          const q = randInt(2, 9), p = q * randInt(2, 12) + randInt(1, q - 1);
+          const g = gcd(p, q);
+          const aa = p / g, bb = q / g;
+          // show s and v as scaled integers with same quotient aa/bb
+          const k = randInt(2, 9);
+          shownS = aa * k;
+          shownV = bb * k;
+        }
+      }
+
+      // Ensure we actually *have* the two values needed for the prompt
+      if (target === "speed") { shownS ??= s0; shownT ??= t0; }
+      else if (target === "distance") { shownV ??= v0; shownT ??= t0; }
+      else { shownS ??= s0; shownV ??= v0; }
+
+      // Build prompt & compute the numeric/fraction answer *from the shown values*
+      let prompt, canonicalAnswer, checker;
+
+      if (target === "speed") {
+        prompt = `If distance = ${shownS} and time = ${shownT}, what is speed?`;
+        // answer = shownS / shownT
+        const val = shownS / shownT;
+        // prefer integer if it is, else kept as fraction reduced
+        const P = toMixed(shownS, shownT);
+        canonicalAnswer = P.q === 1 ? String(P.p) : `${P.p}/${P.q}`;
+        checker = (u) => fracEqual(u, val);
+      } else if (target === "distance") {
+        prompt = `If speed = ${shownV} and time = ${shownT}, what is distance?`;
+        const val = shownV * shownT;
+        canonicalAnswer = String(val);
+        checker = (u) => fracEqual(u, val);
+      } else {
+        prompt = `If speed = ${shownV} and distance = ${shownS}, what is time?`;
+        const val = shownS / shownV;
+        const P = toMixed(shownS, shownV);
+        canonicalAnswer = P.q === 1 ? String(P.p) : `${P.p}/${P.q}`;
+        checker = (u) => fracEqual(u, val);
+      }
+
+      return { prompt, answer: canonicalAnswer, checker };
     }
+
+
 
     case "trig_inverse_recall": {
       // mode: ask in degrees OR radians (answer format matches)
@@ -2994,7 +3082,15 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     setLastWasCorrect(ok);
     return ok;
   };
-
+  const advance = () => {
+    next();
+    setQIndex(i => i + 1);     // if you use keyed animation
+    setAnswer("");
+    setState("idle");
+    setPhase("go");
+    setLastWasCorrect(null);
+    // inputRef.current?.focus();
+  };
   const [current, setCurrent] = useState(null);
   const [answer, setAnswer] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
@@ -3184,11 +3280,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                     const ok = checkOnce();
                     if (ok) {
                       // Correct → auto skip
-                      next();                       // advance to the next question
-                      setAnswer("");
-                      setState("idle");
-                      setPhase("go");
-                      setLastWasCorrect(null);
+                      advance()
                     } else {
                       // Wrong → go to reveal phase
                       setPhase("reveal");
