@@ -2776,6 +2776,11 @@ function SuggestionsPanel() {
 
 
 function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash, onExit, onFinish }){
+  function recordCorrect() {
+    const dt = (Date.now() - qStart.current) / 1000;
+    times.current.push(dt);
+    setCorrectCount(c => c + 1);
+  }
   function TriangleDiagram({ type, lengths, labels, angleHint, isoRight, thetaAt }) {
     // Fixed canvas
     const W = 360, H = 220, MARGIN = 18;
@@ -3272,48 +3277,83 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
 
 // run every time current question changes → re-typeset MathJax
   const [lastWasCorrect, setLastWasCorrect] = useState(null);
+  function primaryAction() {
+    if (state === "finished") return;
+
+    if (phase === "go") {
+      const ok = checkOnce();
+      if (ok) {
+        advance();
+      } else {
+        setPhase("reveal");
+      }
+      return;
+    }
+
+    if (phase === "reveal") {
+      if (state !== "revealed") {
+        setState("revealed");
+      } else {
+        advance();
+      }
+      return;
+    }
+
+    if (phase === "next") {
+      advance();
+    }
+  }
 
   // ADD: a pure one-shot checker we can call from Enter or the primary button
   const checkOnce = () => {
     if (!current) return false;
 
-    // Prefer a custom checker if provided
     let ok = false;
+
     if (typeof current.checker === "function") {
       ok = !!current.checker(answer);
     } else {
-      // Fallback: compare to acceptableAnswers/answer
       const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, "");
       const cand = norm(answer);
       const accepts = new Set(
         (current.acceptableAnswers ?? [current.answer ?? ""])
           .map(norm)
       );
-      // try numeric equality too (for numeric answers)
-      if (accepts.has(cand)) ok = true;
-      else {
+      if (accepts.has(cand)) {
+        ok = true;
+      } else {
         const aNum = Number(answer);
-        if (Number.isFinite(aNum)) {
-          const target = Number(current.answer);
-          if (Number.isFinite(target) && aNum === target) ok = true;
+        const target = Number(current.answer);
+        if (Number.isFinite(aNum) && Number.isFinite(target) && aNum === target) {
+          ok = true;
         }
       }
     }
 
     setAttempts(a => a + 1);
-    setState(ok ? "correct" : "wrong");
-    setLastWasCorrect(ok);
+
+    if (ok) {
+      recordCorrect();         // <-- this is the piece that was missing
+      setState("correct");
+      setLastWasCorrect(true);
+      setPhase("go");          // remain in go; the button/Enter will advance
+    } else {
+      setState("wrong");
+      setLastWasCorrect(false);
+      setPhase("reveal");      // move to reveal phase after a wrong try
+    }
+
     return ok;
   };
   const advance = () => {
     next();
-    setQIndex(i => i + 1);     // if you use keyed animation
     setAnswer("");
     setState("idle");
     setPhase("go");
     setLastWasCorrect(null);
     // inputRef.current?.focus();
   };
+
   const [current, setCurrent] = useState(null);
   const [answer, setAnswer] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
@@ -3374,7 +3414,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   function endSession(){
     setState("finished");
     const elapsed = Math.max(1, (Date.now() - startedAt.current)/1000);
-    const correct = times.current.length;
+    const correct = correctCount;
     const attemptsTotal = attempts; // or convert to a ref if you want 100% safety
     const avgSecPerQ = times.current.length ? (times.current.reduce((a,b)=>a+b,0)/times.current.length) : elapsed/Math.max(1,correctCount);
     const uniqTopicIds = [...new Set(topicIds.filter(t=>t!=="flash_timer"))];
@@ -3382,37 +3422,6 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     const { score, accuracy } = computeScore({ correct, attempts: attemptsTotal, durationSec: elapsed });
     const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ*100)/100, attempts: attemptsTotal, correct, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin*60), };
     onFinish?.(entry);
-  }
-
-  function doCheck() {
-    if (!current || state === "finished") return;
-
-    const ok = typeof current?.checker === "function"
-      ? current.checker(answer)
-      : equalish(answer, current.answer);
-
-    setAttempts(a => a + 1);
-
-    if (ok) {
-      const dt = (Date.now() - qStart.current) / 1000;
-      times.current.push(dt);
-      setState("correct");
-      setTimeout(() => next(), 60); // same auto-advance
-    } else {
-      setState("wrong");
-      // Ensure the primary stays "Reveal answer" after any wrong attempt(s)
-      setPhase("reveal");
-    }
-  }
-
-  function submit(e){
-    e.preventDefault();
-    if (state === "finished") return;
-
-    if (phase === "go")       doCheck();
-    else if (phase === "reveal") revealAnswer();
-    else if (phase === "next")   next();
-    else doCheck();
   }
 
 
@@ -3497,22 +3506,10 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
 
 
               <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!hidden && phase !== "next") {
-                    const ok = checkOnce();
-                    if (ok) {
-                      // Correct → auto skip
-                      advance()
-                    } else {
-                      // Wrong → go to reveal phase
-                      setPhase("reveal");
-                    }
-                  }
-  
-                }}
+                onSubmit={(e) => { e.preventDefault(); primaryAction(); }}
                 className="mt-4 flex items-center justify-center gap-2"
-              >             <input
+              >
+                <input
                   ref={inputRef}
                   value={answer}
                   onChange={(e) => setAnswer(beautifyInline(e.target.value))}
@@ -3523,44 +3520,10 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                     }`}
                 />
 
-                {/* Primary action cycles: Go → Reveal answer → Next */}
                 <button
                   type="button"
                   className={btnPrimary}
-                  onClick={() => {
-                    if (phase === "go") {
-                      const ok = checkOnce();
-                      if (ok) {
-                        // correct → skip immediately
-                        next();
-                        setAnswer("");
-                        setState("idle");
-                        setPhase("go");
-                        setLastWasCorrect(null);
-                      } else {
-                        // wrong → go to reveal stage
-                        setPhase("reveal");
-                      }
-                    } else if (phase === "reveal") {
-                      // first press of Reveal → show answer
-                      if (state !== "revealed") {
-                        setState("revealed");
-                      } else {
-                        // second press (after answer is revealed) → move on
-                        next();
-                        setAnswer("");
-                        setState("idle");
-                        setPhase("go");
-                        setLastWasCorrect(null);
-                      }
-                    } else if (phase === "next") {
-                      next();
-                      setAnswer("");
-                      setState("idle");
-                      setPhase("go");
-                      setLastWasCorrect(null);
-                    }
-                  }}
+                  onClick={primaryAction}
                 >
                   {phase === "go" && (<><Play size={16} /> Go</>)}
                   {phase === "reveal" && state !== "revealed" && (<><Eye size={16} /> Reveal</>)}
@@ -3568,14 +3531,12 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                   {phase === "next" && (<><Check size={16} /> Next</>)}
                 </button>
 
-                {/* Secondary: keep a “Check again” button while user is in reveal phase (i.e., after a wrong try) */}
                 {phase === "reveal" && (
                   <button type="button" onClick={checkOnce} className={btnGhost}>
                     <Check size={16} /> Again
                   </button>
                 )}
 
-                {/* If the prompt was hidden by Flash Timer, optionally allow revealing immediately before any check */}
                 {hidden && phase === "go" && (
                   <button
                     type="button"
@@ -3585,10 +3546,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                     <Eye size={16} /> Reveal now
                   </button>
                 )}
-
-
               </form>
-
 
 {/* Live MathJax preview under the input */}
               {/* Symbols toolbar */}
