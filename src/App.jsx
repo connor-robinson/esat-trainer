@@ -1868,7 +1868,7 @@ function genQuestion(topic) {
         const prompt = `${prettyFn}(${pickOne.val}), give Ans in rad`;
       }
 
-      const ans = mode === "deg" ? `${pickOne.deg}°` : pickOne.rad;
+      const ans = mode === "deg" ? `${pickOne.deg}` : pickOne.rad;
       const acceptable = mode === "deg"
         ? [String(pickOne.deg), `${pickOne.deg}°`]
         : [pickOne.rad, pickOne.rad.replace("π", "pi")];
