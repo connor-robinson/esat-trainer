@@ -1528,43 +1528,83 @@ function genQuestion(topic) {
       const answer = Number.isFinite(ans) ? String(Math.round(ans*100)/100) : ""; return { prompt, answer };
     }
     case "speed_basic": {
-      // unknown: one of 'speed' v, 'distance' s, 'time' t
-      const target = pick(["speed", "distance", "time"]);
+      // Decide between word problem or pure formula recall
+      const mode = pick(["word", "formula"]);
 
-      // choose tiny integers that divide cleanly
-      let v, s, t;
-      if (target === "speed") {
-        t = randInt(2, 12);
-        v = randInt(2, 12);
-        s = v * t;
-      } else if (target === "distance") {
-        v = randInt(2, 12);
-        t = randInt(2, 12);
-        s = v * t;
-      } else { // time
-        v = randInt(2, 12);
-        t = randInt(2, 12);
-        s = v * t;
+      if (mode === "word") {
+        // Word problem with numbers
+        const target = pick(["speed", "distance", "time"]);
+
+        // Allow both integers and fractions for realism
+        let v, s, t;
+        if (target === "speed") {
+          t = randInt(2, 12);
+          v = randInt(2, 12);
+          if (Math.random() < 0.3) v = `${randInt(1, 9)}/${randInt(2, 9)}`; // make v fractional
+          s = evalFraction(v) * t; // compute numeric
+        } else if (target === "distance") {
+          v = randInt(2, 12);
+          if (Math.random() < 0.3) v = `${randInt(1, 9)}/${randInt(2, 9)}`;
+          t = randInt(2, 12);
+          s = evalFraction(v) * t;
+        } else {
+          v = randInt(2, 12);
+          t = randInt(2, 12);
+          if (Math.random() < 0.3) t = `${randInt(1, 9)}/${randInt(2, 9)}`;
+          s = v * evalFraction(t);
+        }
+
+        // Numeric answer (as fraction string if needed)
+        let prompt, numericAnswer;
+        if (target === "speed") {
+          prompt = `If distance = ${s}, and time = ${t}, what is speed?`;
+          numericAnswer = v;
+        } else if (target === "distance") {
+          prompt = `If speed = ${v}, and time = ${t}, what is distance?`;
+          numericAnswer = s;
+        } else {
+          prompt = `If speed = ${v}, and distance = ${s}, what is time?`;
+          numericAnswer = t;
+        }
+
+        return {
+          prompt,
+          answer: String(numericAnswer),
+          checker: (user) => simplifyUserAnswer(user) === simplifyUserAnswer(String(numericAnswer)),
+        };
       }
 
-      let prompt, numericAnswer;
-      if (target === "speed") {
-        prompt = `If distance = ${s} and time = ${t}, what is speed?`;
-        numericAnswer = v;
-      } else if (target === "distance") {
-        prompt = `If speed = ${v} and time = ${t}, what is distance?`;
-        numericAnswer = s;
-      } else {
-        prompt = `If speed = ${v} and distance = ${s}, what is time?`;
-        numericAnswer = t;
-      }
+      else {
+        // Formula recall (symbolic form)
+        const target = pick(["speed", "distance", "time"]);
+        let prompt, acceptable;
 
-      return {
-        prompt,
-        answer: String(numericAnswer),
-        checker: (user) => Number(user) === numericAnswer,
-      };
+        if (target === "speed") {
+          prompt = "Speed = ?";
+          acceptable = ["s/t"];
+        } else if (target === "distance") {
+          prompt = "Distance = ?";
+          acceptable = ["vt", "v*t", "t*v"];
+        } else {
+          prompt = "Time = ?";
+          acceptable = ["s/v"];
+        }
+
+        const checker = (user) => {
+          const norm = (user || "")
+            .replace(/\s+/g, "")
+            .replace(/×/g, "*")
+            .replace(/·/g, "*")
+            .replace(/÷/g, "/")
+            .toLowerCase();
+
+          return acceptable.includes(norm);
+        };
+
+        return { prompt, answer: acceptable[0], checker };
+      }
     }
+
     case "trig_inverse_recall": {
       // mode: ask in degrees OR radians (answer format matches)
       const mode = pick(["deg", "rad"]);
