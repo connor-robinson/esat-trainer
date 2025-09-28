@@ -1440,101 +1440,130 @@ function genQuestion(topic) {
     }
 
     case "simplify_fraction": {
-      // ---------- helpers ----------
+      // ---------- tiny local helpers (self-contained) ----------
+      const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+
+      // parse "a/b" or "123"
       const parseFraction = (s) => {
-        if (!s) return null;
-        const t = s.trim();
-        if (/^[+-]?\d+$/.test(t)) return [Number(t), 1];
-        const m = t.match(/^\s*([+-]?\d+)\s*\/\s*([+-]?\d+)\s*$/);
+        if (s == null) return null;
+        const t = String(s).trim();
+        if (/^\d+$/.test(t)) return [Number(t), 1]; // integer
+        const m = t.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
         if (!m) return null;
         const p = Number(m[1]), q = Number(m[2]);
         if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) return null;
         return [p, q];
       };
-      function randomCoprimePair(min = 2, max = 40) {
-        while (true) {
-          const a = randInt(min, max);
-          const b = randInt(min, max);
-          if (gcd(a, b) === 1) return [a, b];
-        }
-      }
-      // simple TeX helpers
-      const texFrac = (num, den) => `\\dfrac{${num}}{${den}}`;
-      const texParen = s => `{${s}}`; // braces are grouping in TeX
 
-      // ---------- choose flat or nested ----------
-      // ~30% nested; nested uses smaller numbers
-      const makeNested = Math.random() < 0.3;
-
-      let P, Q;             // the unsimplified numeric fraction to show (as text fallback)
-      let promptLatex;      // the TeX we render
-      let textPrompt;       // plain text fallback like "Simplify: (a/b)/c"
-
-      if (!makeNested) {
-        // ------- FLAT: your original pattern -------
-        const factors = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20];
-        const [n0, d0] = randomCoprimePair(2, 40);
-        const k = pick(factors);
-        P = n0 * k;
-        Q = d0 * k;
-        if (Math.random() < 0.25) P = -P;
-
-        promptLatex = `${texFrac(P, Q)}`;            // e.g. \dfrac{24}{36}
-        textPrompt = `Simplify: ${P}/${Q}`;
-      } else {
-        // ------- NESTED: simpler integers -------
-        // Two patterns:
-        //  A) (a/b)/c  ==> a/(b*c)
-        //  B) a/(b/c)  ==> (a*c)/b
-        const pattern = Math.random() < 0.5 ? "overC" : "overBoverC";
-
-        // keep numbers small & coprime where it matters
-        const [a, b] = randomCoprimePair(2, 12);
-        const c = randInt(2, 12);
-
-        if (pattern === "overC") {
-          // (a/b)/c → a/(b*c)
-          const sign = Math.random() < 0.25 ? -1 : 1; // random sign on numerator
-          P = sign * a;
-          Q = b * c;
-          promptLatex = texFrac(texFrac(sign * a, b), c);      // \dfrac{\dfrac{a}{b}}{c}
-          textPrompt = `Simplify: (${sign * a}/${b})/${c}`;
-        } else {
-          // a/(b/c) → (a*c)/b
-          const sign = Math.random() < 0.25 ? -1 : 1;
-          P = sign * (a * c);
-          Q = b;
-          promptLatex = texFrac(a, texFrac(b, c));            // \dfrac{a}{\dfrac{b}{c}}
-          textPrompt = `Simplify: ${a}/(${b}/${c})`;
-          if (sign < 0) {
-            // apply sign to overall numerator visually
-            promptLatex = texFrac("-" + a, texFrac(b, c));
+      // ensure reducible by picking until gcd > 1 (and keep numbers small)
+      function buildNestedOverC() {
+        // (a/b)/c  =>  a/(b*c)
+        // Keep 2..9 to be small; ensure reducible: gcd(a, b*c) > 1
+        for (let tries = 0; tries < 200; tries++) {
+          const a = randInt(2, 9);
+          const b = randInt(2, 9);
+          const c = randInt(2, 9);
+          const P = a, Q = b * c;
+          if (gcd(P, Q) > 1) {
+            const prompt = `Simplify: (${a}/${b})/${c}`;
+            return { P, Q, prompt };
           }
         }
+        // fallback (shouldn't hit)
+        return { P: 6, Q: 9, prompt: "Simplify: (6/3)/3" };
       }
 
-      // ---------- canonical answer & checker ----------
-      const [ANS_P, ANS_Q] = reduceFraction(P, Q);     // denominator positive
-      const answer = formatFraction(ANS_P, ANS_Q);
+      function buildNestedOverBoverC() {
+        // a/(b/c)  =>  (a*c)/b
+        // Keep 2..9; ensure reducible: gcd(a*c, b) > 1
+        for (let tries = 0; tries < 200; tries++) {
+          const a = randInt(2, 9);
+          const b = randInt(2, 9);
+          const c = randInt(2, 9);
+          const P = a * c, Q = b;
+          if (gcd(P, Q) > 1) {
+            const prompt = `Simplify: ${a}/(${b}/${c})`;
+            return { P, Q, prompt };
+          }
+        }
+        // fallback
+        return { P: 6, Q: 9, prompt: "Simplify: 6/(9/1)" };
+      }
 
+      function buildFlatEasy() {
+        // Flat: (n0/d0)*k where n0,d0 are small & coprime, k small
+        // This guarantees a simple reduce by k.
+        const small = [2, 3, 4, 5, 6];
+        for (let tries = 0; tries < 200; tries++) {
+          const n0 = randInt(2, 12);
+          const d0 = randInt(2, 12);
+          if (gcd(n0, d0) !== 1) continue;        // want simple reduced base
+          if (n0 === d0) continue;                // avoid trivial 1
+          const k = pick(small);
+          const P = n0 * k;
+          const Q = d0 * k;
+          // both positive (no negatives at all)
+          const prompt = `Simplify: ${P}/${Q}`;
+          return { P, Q, prompt };
+        }
+        // fallback
+        return { P: 8, Q: 12, prompt: "Simplify: 8/12" };
+      }
+
+      // ---------- generation policy ----------
+      // ~80% nested, 20% flat & easy
+      const makeNested = Math.random() < 0.8;
+
+      let P, Q, prompt;
+      if (makeNested) {
+        if (Math.random() < 0.5) {
+          ({ P, Q, prompt } = buildNestedOverC());
+        } else {
+          ({ P, Q, prompt } = buildNestedOverBoverC());
+        }
+      } else {
+        ({ P, Q, prompt } = buildFlatEasy());
+      }
+
+      // ---------- normalize (NO negatives) & simplify ----------
+      // Force non-negative; everything we built is positive, but guard anyway.
+      P = Math.abs(P);
+      Q = Math.abs(Q);
+      if (Q === 0) Q = 1;
+
+      const g = gcd(P, Q);
+      const N = P / g;
+      const D = Q / g;
+
+      const answer = D === 1 ? String(N) : `${N}/${D}`;
+
+      // ---------- checker ----------
       const checker = (user) => {
         const parsed = parseFraction(user);
         if (!parsed) return false;
-        let [a, b] = parsed;
-        if (ANS_Q !== 1 && b === 1) return false;             // must be a fraction unless integer is correct
-        const g0 = gcd(Math.abs(a), Math.abs(b));
-        if (g0 !== 1) return false;                           // lowest terms
-        const [A, B] = reduceFraction(a, b);
-        return A === ANS_P && B === ANS_Q;
+        let [uP, uQ] = parsed;
+
+        // disallow negatives entirely (as requested)
+        if (uP < 0 || uQ < 0) return false;
+
+        if (uQ === 0) return false;
+        const gg = gcd(uP, uQ);
+        uP /= gg; uQ /= gg;
+
+        return uP === N && uQ === D;
       };
 
       return {
-        prompt: textPrompt,
-        promptLatex: `\\text{Simplify:}\\;${promptLatex}`,   // render with KaTeX
-        answer,
-        checker,
+        prompt,                 // plain text like "Simplify: (a/b)/c" or "a/(b/c)" or "P/Q"
+        answer,                 // canonical simplified positive string
+        acceptableAnswers: [answer],
+        checker
       };
     }
+
+
 
 
     case "mul_of_5": 
