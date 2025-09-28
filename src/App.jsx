@@ -23,6 +23,12 @@ import { motion, AnimatePresence } from "framer-motion";
   - Parser: accepts sqrt(), √, brackets, caret ^, pi/π, and also plain 'sqrt2' → Math.sqrt(2)
 */
 // create this file if you used 7a
+function normStr(v) {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
 // Build a robust checker for an exact trig token like "sqrt(2)/2", "-sqrt(3)/3", "undef", "0"
 function buildTrigChecker(exactToken) {
   const exact = String(exactToken ?? "").trim();
@@ -1834,7 +1840,7 @@ function genQuestion(topic) {
 
       // exact-value pool (only defined values)
       const pool = [
-        { f: "sin", val: "0", deg: 0, rad: "0" },
+        { f: "sin", val: "0", deg: 0, rad: "π/6".replace("π/6", "0") },  // keep uniform shape
         { f: "sin", val: "1/2", deg: 30, rad: "π/6" },
         { f: "sin", val: "√2/2", deg: 45, rad: "π/4" },
         { f: "sin", val: "√3/2", deg: 60, rad: "π/3" },
@@ -1853,35 +1859,50 @@ function genQuestion(topic) {
         // (exclude 90° / π/2 where tan undefined)
       ];
 
-      // map inverse label to base function
-      const invToBase = (name) =>
-        name.startsWith("arc") ? name.slice(3) : name.slice(0, 3); // arcsin→sin, sin⁻¹→sin
+      // Map inverse label to base function ("arcsin" -> "sin", "sin⁻¹" -> "sin")
+      const invToBase = (name) => {
+        if (typeof name !== "string") return "";
+        if (name.startsWith("arc")) return name.slice(3);   // arcsin/arccos/arctan
+        // e.g., "sin⁻¹", "cos⁻¹", "tan⁻¹" → first 3 letters
+        return name.slice(0, 3);
+      };
 
       const base = invToBase(invName); // "sin"|"cos"|"tan"
       const candidates = pool.filter(p => p.f === base);
       const pickOne = pick(candidates);
 
       const prettyFn = invName; // e.g., "arcsin" or "sin⁻¹"
-      if (mode === "deg"){
-        const prompt = `${prettyFn}(${pickOne.val}), give Ans in deg`;
-      } else{
-        const prompt = `${prettyFn}(${pickOne.val}), give Ans in rad`;
+
+      // Define prompt OUTSIDE the blocks so it exists in this scope
+      let prompt;
+      if (mode === "deg") {
+        prompt = `${prettyFn}(${pickOne.val}), in degrees`;
+      } else {
+        prompt = `${prettyFn}(${pickOne.val}), in radians`;
       }
 
-      const ans = mode === "deg" ? `${pickOne.deg}` : pickOne.rad;
+      const ans = mode === "deg" ? String(pickOne.deg) : pickOne.rad;
+
+      // Accept common equivalent notations
       const acceptable = mode === "deg"
         ? [String(pickOne.deg), `${pickOne.deg}°`]
-        : [pickOne.rad, pickOne.rad.replace("π", "pi")];
+        : [
+          pickOne.rad,                       // "π/6"
+          pickOne.rad.replace(/π/gi, "pi"),  // "pi/6"
+          pickOne.rad.replace(/π/gi, "π").replace(/\s+/g, "") // normalized spacing
+        ];
 
-      // allow some common equivalent forms
       const checker = (user) => {
-        const u = (user || "").trim().toLowerCase().replace(/\s+/g, "");
-        const set = new Set(acceptable.map(x => x.toLowerCase().replace(/\s+/g, "")));
+        const u = String(user ?? "").trim().toLowerCase().replace(/\s+/g, "");
+        const set = new Set(
+          acceptable.map(x => String(x ?? "").trim().toLowerCase().replace(/\s+/g, ""))
+        );
         return set.has(u);
       };
 
       return { prompt, answer: ans, acceptableAnswers: acceptable, checker };
     }
+
 
     case "units_convert": { const mode = pick(["k2m","m2k"]); if (mode==="k2m") { const v = randInt(10, 120); const ms = Math.round((v * 1000/3600)*100)/100; return { prompt: `Convert ${v} km/h to m/s`, answer: String(ms) }; } else { const v = randInt(3, 40); const k = Math.round((v * 3.6)*100)/100; return { prompt: `Convert ${v} m/s to km/h`, answer: String(k) }; } }
 
@@ -3448,7 +3469,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     requestAnimationFrame(()=>{ el.focus(); const pos = start + text.length; el.setSelectionRange(pos, pos); });
   }
   const suggestedSymbols = useMemo(()=>{
-    const p = (current?.prompt || "").toLowerCase();
+    const p = String(current?.prompt ?? "").toLowerCase();
     const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷"];
     const need = new Set(base);
     if (p.includes("π") || p.includes("pi")) need.add("π");
