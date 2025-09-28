@@ -1862,7 +1862,11 @@ function genQuestion(topic) {
       const pickOne = pick(candidates);
 
       const prettyFn = invName; // e.g., "arcsin" or "sin⁻¹"
-      const prompt = `${prettyFn}(${pickOne.val})`;
+      if (mode === "deg"){
+        const prompt = `${prettyFn}(${pickOne.val}), give Ans in deg`;
+      } else{
+        const prompt = `${prettyFn}(${pickOne.val}), give Ans in rad`;
+      }
 
       const ans = mode === "deg" ? `${pickOne.deg}°` : pickOne.rad;
       const acceptable = mode === "deg"
