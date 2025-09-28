@@ -1915,7 +1915,7 @@ function genQuestion(topic) {
     case "square_pyramid_sa": { const a = randInt(2, 20), l = randInt(2, 25); const val = a*a + 2*a*l; return { prompt: `Surface area of square pyramid, base a=${a}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
     case "common_multiples": {
       // allowed ranges
-      const twod = [13, 14, 15, 16, 17, 18, 19];
+      const twod = [12, 13, 14, 15, 16, 17, 18, 19];
       const oned = [3, 4, 5, 6, 7, 8, 9];
 
       // pick until valid (avoid 19×9)
