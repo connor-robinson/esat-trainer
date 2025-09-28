@@ -1370,9 +1370,9 @@ function genQuestion(topic) {
     case "mul_of_5": 
     { const a = pick([5, 15, 25]); 
       let b;
-      if (a===5){b = randInt(11, 30);}
+      if (a===5){b = randInt(11, 45);}
       else{
-        b = randInt(1, 12);
+        b = randInt(1, 16);
       }
       return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
 
