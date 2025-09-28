@@ -23,6 +23,83 @@ import { motion, AnimatePresence } from "framer-motion";
   - Parser: accepts sqrt(), √, brackets, caret ^, pi/π, and also plain 'sqrt2' → Math.sqrt(2)
 */
 // create this file if you used 7a
+// Build a robust checker for an exact trig token like "sqrt(2)/2", "-sqrt(3)/3", "undef", "0"
+function buildTrigChecker(exactToken) {
+  const exact = String(exactToken ?? "").trim();
+  const exactNorm = normalizeString(exact);
+
+  // quick alias generator (textual equivalences)
+  function generateAliases(s) {
+    const variants = new Set();
+
+    const add = (t) => variants.add(normalizeString(t));
+
+    // base forms
+    add(s);
+    add(s.replace(/\s+/g, "")); // no spaces
+
+    // sqrt ↔ √
+    const withRadical = s.replace(/sqrt\(\s*3\s*\)/gi, "√3").replace(/sqrt\(\s*2\s*\)/gi, "√2");
+    add(withRadical);
+    add(withRadical.replace(/\s+/g, ""));
+
+    // rationalization pairs for √3 (and √2 just in case, even if rare in your table)
+    const pairs = [
+      [/(^|[^A-Za-z])sqrt\(\s*3\s*\)\/3([^A-Za-z]|$)/gi, "$11/sqrt(3)$2"],
+      [/(^|[^A-Za-z])1\/sqrt\(\s*3\s*\)([^A-Za-z]|$)/gi, "$1sqrt(3)/3$2"],
+      [/√3\/3/gi, "1/√3"],
+      [/1\/√3/gi, "√3/3"],
+      [/(^|[^A-Za-z])sqrt\(\s*2\s*\)\/2([^A-Za-z]|$)/gi, "$11/sqrt(2)$2"],
+      [/(^|[^A-Za-z])1\/sqrt\(\s*2\s*\)([^A-Za-z]|$)/gi, "$1sqrt(2)/2$2"],
+      [/√2\/2/gi, "1/√2"],
+      [/1\/√2/gi, "√2/2"],
+    ];
+
+    for (const [rx, repl] of pairs) {
+      const v = s.replace(rx, repl);
+      if (v !== s) {
+        add(v);
+        add(v.replace(/\s+/g, ""));
+        // also try sqrt↔√ on the variant
+        const v2 = v.replace(/sqrt\(\s*3\s*\)/gi, "√3").replace(/sqrt\(\s*2\s*\)/gi, "√2");
+        add(v2);
+        add(v2.replace(/\s+/g, ""));
+      }
+    }
+
+    return variants;
+  }
+
+  // Special case: undefined-ish answers
+  if (UNDEF_SET.has(exactNorm) || isUndefLike(exact)) {
+    const acceptable = Array.from(UNDEF_SET);
+    return {
+      acceptableAnswers: acceptable,
+      checker: (user) => isUndefLike(user),
+    };
+  }
+
+  // Precompute expected numeric value (if parseable)
+  const expectedNum = tryNumeric(exact);
+
+  const acceptableSet = generateAliases(exact); // normalized textual matches
+
+  return {
+    acceptableAnswers: Array.from(acceptableSet),
+    checker: (user) => {
+      // 1) textual normalized match
+      if (acceptableSet.has(normalizeString(user))) return true;
+
+      // 2) numeric comparison (tolerant)
+      const uNum = tryNumeric(user);
+      if (uNum != null && expectedNum != null && isFinite(uNum) && isFinite(expectedNum)) {
+        return Math.abs(uNum - expectedNum) <= 1e-3; // tolerance
+      }
+
+      return false;
+    },
+  };
+}
 
 function evalFraction(expr) {
   if (expr === null || expr === undefined) return NaN;
@@ -41,6 +118,18 @@ function evalFraction(expr) {
   }
 
   return NaN;
+}
+
+function nCk(n, k) {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+
+  // compute efficiently without large factorials
+  let res = 1;
+  for (let i = 1; i <= k; i++) {
+    res = (res * (n - i + 1)) / i;
+  }
+  return res;
 }
 
 function simplifyUserAnswer(ans) {
@@ -120,6 +209,8 @@ function parseSci(s) {
 
   return null;
 }
+
+
 
 function toScientific(x) {
   if (x === 0) return { a: 0, n: 0 };
@@ -203,7 +294,7 @@ const CATEGORIES = {
     { id: "simplify_fraction", label: "Simplifying fractions" },
   ],
   ALGEBRA: [
-    { id: "factorise_quadratics", label: "Factorise Quadratics" },
+    { id: "factorise_quadratic", label: "Factorise Quadratics" },
     { id: "complete_square", label: "Complete the Square" },
     { id: "inequalities", label: "Inequalities" },
     { id: "binomial_expand", label: "Binomial Expansion" },
@@ -429,6 +520,48 @@ function equalish(userInput, expected){
   }
 
   return false;
+}
+// --- Quadratic factor helpers ---
+// (Ax + B)(Cx + D) = (AC)x^2 + (AD + BC)x + (BD)
+function expandFactors(A, B, C, D) {
+  return {
+    a: A * C,
+    b: A * D + B * C,
+    c: B * D,
+  };
+}
+
+// Strict coefficient compare
+function sameQuad(p, q) {
+  return p && q && p.a === q.a && p.b === q.b && p.c === q.c;
+}
+
+// Parse strings like "(2x+3)(x-4)" -> {A:2, B:3, C:1, D:-4}
+function parseBinomialProduct(raw) {
+  if (!raw) return null;
+  const s = String(raw)
+    .replace(/[−–—]/g, "-") // unicode minus -> "-"
+    .replace(/\s+/g, "");
+
+  // (coef can be "", "+", or "-" meaning 1, +1, -1)
+  const rx = /^\(\s*([+\-]?\d*)x([+\-]\d+)\s*\)\(\s*([+\-]?\d*)x([+\-]\d+)\s*\)$/i;
+  const m = s.match(rx);
+  if (!m) return null;
+
+  const parseCoef = (t) => {
+    if (t === "" || t === "+") return 1;
+    if (t === "-") return -1;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const A = parseCoef(m[1]);
+  const B = Number(m[2]);
+  const C = parseCoef(m[3]);
+  const D = Number(m[4]);
+
+  if ([A, B, C, D].some(v => v === null || !Number.isFinite(v))) return null;
+  return { A, B, C, D };
 }
 
 // helper to identify CALCULATION-only topics (for Flash)
@@ -1702,20 +1835,20 @@ function genQuestion(topic) {
       const pool = [
         { f: "sin", val: "0", deg: 0, rad: "0" },
         { f: "sin", val: "1/2", deg: 30, rad: "π/6" },
-        { f: "sin", val: "sqrt(2)/2", deg: 45, rad: "π/4" },
-        { f: "sin", val: "sqrt(3)/2", deg: 60, rad: "π/3" },
+        { f: "sin", val: "√2/2", deg: 45, rad: "π/4" },
+        { f: "sin", val: "√3/2", deg: 60, rad: "π/3" },
         { f: "sin", val: "1", deg: 90, rad: "π/2" },
 
         { f: "cos", val: "1", deg: 0, rad: "0" },
-        { f: "cos", val: "sqrt(3)/2", deg: 30, rad: "π/6" },
-        { f: "cos", val: "sqrt(2)/2", deg: 45, rad: "π/4" },
+        { f: "cos", val: "√3/2", deg: 30, rad: "π/6" },
+        { f: "cos", val: "√2/2", deg: 45, rad: "π/4" },
         { f: "cos", val: "1/2", deg: 60, rad: "π/3" },
         { f: "cos", val: "0", deg: 90, rad: "π/2" },
 
         { f: "tan", val: "0", deg: 0, rad: "0" },
-        { f: "tan", val: "1/sqrt(3)", deg: 30, rad: "π/6" },
+        { f: "tan", val: "1/√3", deg: 30, rad: "π/6" },
         { f: "tan", val: "1", deg: 45, rad: "π/4" },
-        { f: "tan", val: "sqrt(3)", deg: 60, rad: "π/3" },
+        { f: "tan", val: "√3", deg: 60, rad: "π/3" },
         // (exclude 90° / π/2 where tan undefined)
       ];
 
@@ -1869,34 +2002,87 @@ function genQuestion(topic) {
       const mode = pick(["deg", "rad"]);
 
       if (mode === "deg") {
-        const angle = pick([0, 30, 45, 60, 90]);
-        const f = pick(["sin", "cos", "tan"]);
+        // Include 225° (5π/4) and other common angles
+        const angle = pick([0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]);
+        const f = pick(["sin", "cos", "tan"]); // JS only (no TS types)
+
         const table = {
-          sin: { 0: "0", 30: "1/2", 45: "sqrt(2)/2", 60: "sqrt(3)/2", 90: "1" },
-          cos: { 0: "1", 30: "sqrt(3)/2", 45: "sqrt(2)/2", 60: "1/2", 90: "0" },
-          tan: { 0: "0", 30: "sqrt(3)/3", 45: "1", 60: "sqrt(3)", 90: "undef" },
+          sin: {
+            0: "0", 30: "1/2", 45: "sqrt(2)/2", 60: "sqrt(3)/2", 90: "1",
+            120: "sqrt(3)/2", 135: "sqrt(2)/2", 150: "1/2", 180: "0",
+            210: "-1/2", 225: "-sqrt(2)/2", 240: "-sqrt(3)/2", 270: "-1",
+            300: "-sqrt(3)/2", 315: "-sqrt(2)/2", 330: "-1/2", 360: "0",
+          },
+          cos: {
+            0: "1", 30: "sqrt(3)/2", 45: "sqrt(2)/2", 60: "1/2", 90: "0",
+            120: "-1/2", 135: "-sqrt(2)/2", 150: "-sqrt(3)/2", 180: "-1",
+            210: "-sqrt(3)/2", 225: "-sqrt(2)/2", 240: "-1/2", 270: "0",
+            300: "1/2", 315: "sqrt(2)/2", 330: "sqrt(3)/2", 360: "1",
+          },
+          tan: {
+            0: "0", 30: "sqrt(3)/3", 45: "1", 60: "sqrt(3)", 90: "undef",
+            120: "-sqrt(3)", 135: "-1", 150: "-sqrt(3)/3", 180: "0",
+            210: "sqrt(3)/3", 225: "1", 240: "sqrt(3)", 270: "undef",
+            300: "-sqrt(3)", 315: "-1", 330: "-sqrt(3)/3", 360: "0",
+          },
         };
-        return { prompt: `${f}(${angle}°)`, answer: table[f][angle] };
+
+        const answer = table[f][angle];
+        const { checker, acceptableAnswers } = buildTrigChecker(answer);
+        return { prompt: `${f}(${angle}°)`, answer, acceptableAnswers, checker };
       } else {
-        // radians: 0, π/6, π/4, π/3, π/2
+        // Radians: include 5π/4 and friends
         const angles = [
-          { txt: "0", val: 0, tag: "0" },
-          { txt: "π/6", val: Math.PI / 6, tag: "pi/6" },
-          { txt: "π/4", val: Math.PI / 4, tag: "pi/4" },
-          { txt: "π/3", val: Math.PI / 3, tag: "pi/3" },
-          { txt: "π/2", val: Math.PI / 2, tag: "pi/2" },
+          { txt: "0", val: "0" },
+          { txt: "π/6", val: "pi/6" },
+          { txt: "π/4", val: "pi/4" },
+          { txt: "π/3", val: "pi/3" },
+          { txt: "π/2", val: "pi/2" },
+          { txt: "2π/3", val: "2pi/3" },
+          { txt: "3π/4", val: "3pi/4" },
+          { txt: "5π/6", val: "5pi/6" },
+          { txt: "π", val: "pi" },
+          { txt: "7π/6", val: "7pi/6" },
+          { txt: "5π/4", val: "5pi/4" },   // 225°
+          { txt: "4π/3", val: "4pi/3" },
+          { txt: "3π/2", val: "3pi/2" },
+          { txt: "5π/3", val: "5pi/3" },
+          { txt: "7π/4", val: "7pi/4" },
+          { txt: "11π/6", val: "11pi/6" },
+          { txt: "2π", val: "2pi" },
         ];
+
         const A = pick(angles);
         const f = pick(["sin", "cos", "tan"]);
 
         const table = {
-          sin: { "0": "0", "pi/6": "1/2", "pi/4": "sqrt(2)/2", "pi/3": "sqrt(3)/2", "pi/2": "1" },
-          cos: { "0": "1", "pi/6": "sqrt(3)/2", "pi/4": "sqrt(2)/2", "pi/3": "1/2", "pi/2": "0" },
-          tan: { "0": "0", "pi/6": "sqrt(3)/3", "pi/4": "1", "pi/3": "sqrt(3)", "pi/2": "undef" },
+          sin: {
+            "0": "0", "pi/6": "1/2", "pi/4": "sqrt(2)/2", "pi/3": "sqrt(3)/2", "pi/2": "1",
+            "2pi/3": "sqrt(3)/2", "3pi/4": "sqrt(2)/2", "5pi/6": "1/2", "pi": "0",
+            "7pi/6": "-1/2", "5pi/4": "-sqrt(2)/2", "4pi/3": "-sqrt(3)/2", "3pi/2": "-1",
+            "5pi/3": "-sqrt(3)/2", "7pi/4": "-sqrt(2)/2", "11pi/6": "-1/2", "2pi": "0",
+          },
+          cos: {
+            "0": "1", "pi/6": "sqrt(3)/2", "pi/4": "sqrt(2)/2", "pi/3": "1/2", "pi/2": "0",
+            "2pi/3": "-1/2", "3pi/4": "-sqrt(2)/2", "5pi/6": "-sqrt(3)/2", "pi": "-1",
+            "7pi/6": "-sqrt(3)/2", "5pi/4": "-sqrt(2)/2", "4pi/3": "-1/2", "3pi/2": "0",
+            "5pi/3": "1/2", "7pi/4": "sqrt(2)/2", "11pi/6": "sqrt(3)/2", "2pi": "1",
+          },
+          tan: {
+            "0": "0", "pi/6": "sqrt(3)/3", "pi/4": "1", "pi/3": "sqrt(3)", "pi/2": "undef",
+            "2pi/3": "-sqrt(3)", "3pi/4": "-1", "5pi/6": "-sqrt(3)/3", "pi": "0",
+            "7pi/6": "sqrt(3)/3", "5pi/4": "1", "4pi/3": "sqrt(3)", "3pi/2": "undef",
+            "5pi/3": "-sqrt(3)", "7pi/4": "-1", "11pi/6": "-sqrt(3)/3", "2pi": "0",
+          },
         };
-        return { prompt: `${f}(${A.txt})`, answer: table[f][A.tag] };
+        const answer = table[f][A.val];
+        const { checker, acceptableAnswers } = buildTrigChecker(answer);
+        return { prompt: `${f}(${A.txt})`, answer, acceptableAnswers, checker };
+
       }
     }
+
+
     case "trig_eval": { const triples = [[3,4,5],[5,12,13],[8,15,17]]; const [a,b,c] = pick(triples); const which = pick(["sin","cos","tan"]); const answers = { sin: `${a}/${c}`, cos: `${b}/${c}`, tan: `${a}/${b}` }; return { prompt: `Right △ with sides ${a}-${b}-${c}. Compute ${which}(θ) for angle opposite ${a}.`, answer: answers[which] }; }
 
     default: return { prompt: "Coming soon", answer: "" };
