@@ -310,7 +310,8 @@ const CATEGORIES = {
     { id: "square_pyramid_sa", label: "Square Pyramid SA" },
   ],
   TRIGONOMETRY: [
-    { id: "trig_recall", label: "Trig Ratios " },
+    { id: "trig_recall_basic", label: "Basic Trig Ratios" },
+    { id: "trig_recall_extended", label: "Advanced Trig Ratios " },
     { id: "trig_inverse_recall", label: "Inverse Trig Ratios " },
     { id: "trig_eval", label: "Using trig functions" },
     { id: "tri_special", label: "Special Triangles" },
@@ -1997,14 +1998,53 @@ function genQuestion(topic) {
 
 
     // Trig
-    case "trig_recall": {
-      // Randomly choose degrees or radians
+    case "trig_recall_basic": {
       const mode = pick(["deg", "rad"]);
 
       if (mode === "deg") {
-        // Include 225° (5π/4) and other common angles
+        const angle = pick([0, 30, 45, 60, 90]);
+        const f = pick(["sin", "cos", "tan"]);
+
+        const table = {
+          sin: { 0: "0", 30: "1/2", 45: "sqrt(2)/2", 60: "sqrt(3)/2", 90: "1" },
+          cos: { 0: "1", 30: "sqrt(3)/2", 45: "sqrt(2)/2", 60: "1/2", 90: "0" },
+          tan: { 0: "0", 30: "sqrt(3)/3", 45: "1", 60: "sqrt(3)", 90: "undef" },
+        };
+
+        const answer = table[f][angle];
+        const { checker, acceptableAnswers } = buildTrigChecker(answer);
+        return { prompt: `${f}(${angle}°)`, answer, acceptableAnswers, checker };
+      } else {
+        const angles = [
+          { txt: "0", val: "0" },
+          { txt: "π/6", val: "pi/6" },
+          { txt: "π/4", val: "pi/4" },
+          { txt: "π/3", val: "pi/3" },
+          { txt: "π/2", val: "pi/2" },
+        ];
+        const A = pick(angles);
+        const f = pick(["sin", "cos", "tan"]);
+
+        const table = {
+          sin: { "0": "0", "pi/6": "1/2", "pi/4": "sqrt(2)/2", "pi/3": "sqrt(3)/2", "pi/2": "1" },
+          cos: { "0": "1", "pi/6": "sqrt(3)/2", "pi/4": "sqrt(2)/2", "pi/3": "1/2", "pi/2": "0" },
+          tan: { "0": "0", "pi/6": "sqrt(3)/3", "pi/4": "1", "pi/3": "sqrt(3)", "pi/2": "undef" },
+        };
+
+        const answer = table[f][A.val];
+        const { checker, acceptableAnswers } = buildTrigChecker(answer);
+        return { prompt: `${f}(${A.txt})`, answer, acceptableAnswers, checker };
+      }
+    }
+// =======================
+// EXTENDED: includes angles around full circle (e.g., 7π/4, 5π/4, ...)
+// =======================
+    case "trig_recall_extended": {
+      const mode = pick(["deg", "rad"]);
+
+      if (mode === "deg") {
         const angle = pick([0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]);
-        const f = pick(["sin", "cos", "tan"]); // JS only (no TS types)
+        const f = pick(["sin", "cos", "tan"]);
 
         const table = {
           sin: {
@@ -2031,7 +2071,6 @@ function genQuestion(topic) {
         const { checker, acceptableAnswers } = buildTrigChecker(answer);
         return { prompt: `${f}(${angle}°)`, answer, acceptableAnswers, checker };
       } else {
-        // Radians: include 5π/4 and friends
         const angles = [
           { txt: "0", val: "0" },
           { txt: "π/6", val: "pi/6" },
@@ -2043,7 +2082,7 @@ function genQuestion(topic) {
           { txt: "5π/6", val: "5pi/6" },
           { txt: "π", val: "pi" },
           { txt: "7π/6", val: "7pi/6" },
-          { txt: "5π/4", val: "5pi/4" },   // 225°
+          { txt: "5π/4", val: "5pi/4" },
           { txt: "4π/3", val: "4pi/3" },
           { txt: "3π/2", val: "3pi/2" },
           { txt: "5π/3", val: "5pi/3" },
@@ -2051,7 +2090,6 @@ function genQuestion(topic) {
           { txt: "11π/6", val: "11pi/6" },
           { txt: "2π", val: "2pi" },
         ];
-
         const A = pick(angles);
         const f = pick(["sin", "cos", "tan"]);
 
@@ -2075,13 +2113,12 @@ function genQuestion(topic) {
             "5pi/3": "-sqrt(3)", "7pi/4": "-1", "11pi/6": "-sqrt(3)/3", "2pi": "0",
           },
         };
+
         const answer = table[f][A.val];
         const { checker, acceptableAnswers } = buildTrigChecker(answer);
         return { prompt: `${f}(${A.txt})`, answer, acceptableAnswers, checker };
-
       }
     }
-
 
     case "trig_eval": { const triples = [[3,4,5],[5,12,13],[8,15,17]]; const [a,b,c] = pick(triples); const which = pick(["sin","cos","tan"]); const answers = { sin: `${a}/${c}`, cos: `${b}/${c}`, tan: `${a}/${b}` }; return { prompt: `Right △ with sides ${a}-${b}-${c}. Compute ${which}(θ) for angle opposite ${a}.`, answer: answers[which] }; }
 
