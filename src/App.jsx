@@ -190,7 +190,32 @@ function TopicRow({ id, label, onAdd }) {
     </div>
   );
 }
+function normalizeEntry(e) {
+  return {
+    // prefer explicit camelCase values if present; otherwise map from snake_case
+    id: e.id ?? e.entry_id ?? `${e.user_id ?? "anon"}-${e.created_at ?? ""}`,
+    user_id: e.user_id ?? e.userId,
+    when: e.when ?? e.created_at ?? e.timestamp ?? new Date().toISOString(),
 
+    score: e.score ?? 0,
+    accuracy: e.accuracy ?? e.acc ?? 0,
+    attempts: e.attempts ?? e.tries ?? 0,
+    correct: e.correct ?? e.right ?? 0,
+
+    // this was the culprit:
+    durationSec: e.durationSec ?? e.duration_sec ?? e.seconds ?? 0,
+
+    // keep both, if present
+    avgSecPerQ: e.avgSecPerQ ?? e.avg_sec_per_q ?? e.avg_seconds_per_q ?? null,
+
+    topics: Array.isArray(e.topics) ? e.topics : (
+      typeof e.topics === "string" ? e.topics.split(",").map(s=>s.trim()).filter(Boolean) : []
+    ),
+
+    // retain the rest
+    ...e,
+  };
+}
 // ---------- Styling helpers ----------
 // Parse scientific notation variants: "a×10^n", "a*10^-n", "a e n"
 function parseSci(s) {
@@ -2745,7 +2770,7 @@ export default function App() {
       if (data.user) {
         try {
           const rows = await listSessionEntries();
-          const cloudBoard = rows.map(r => r.payload);
+          const cloudBoard = rows.map(r => normalizeEntry({ ...r, ...(r.payload || {}) }));
           setBoard(cloudBoard);
         } catch (e) {
           console.error("Load cloud board failed:", e);
