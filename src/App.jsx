@@ -317,11 +317,9 @@ const CATEGORIES = {
     { id: "prime_factorise", label: "Prime Factorisation" },   // ⬅️ new
     { id: "powers_mixed", label: "Powers of 2" },
     { id: "divisibility_rules", label: "Divisbility Rule" },
-    { id: "sci_rewrite", label: "Divisbility Rule" },
+    { id: "sci_rewrite", label: "Sci notation" },
     { id: "common_multiples", label: "Common multiples" },
     { id: "common_multiples_reverse", label: "Reversed Multiples" },
-
-    { id: "diff_speed", label: "Differentiate" },
     { id: "two_power_fraction", label: "Powers of 2, fraction." },
     { id: "diff_speed", label: "Differentiate" },
     { id: "integrate_speed", label: "Integrate" },
