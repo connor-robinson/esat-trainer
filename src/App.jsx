@@ -1,5 +1,5 @@
 import 'katex/dist/katex.min.css';
-import { BlockMath } from 'react-katex';
+import { InlineMath, BlockMath } from 'react-katex';
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
 import { useDisplayName } from "./hooks/useDisplayName";
@@ -323,6 +323,7 @@ const CATEGORIES = {
     { id: "two_power_fraction", label: "Powers of 2, fraction." },
     { id: "diff_speed", label: "Differentiate" },
     { id: "integrate_speed", label: "Integrate" },
+    { id: "estimate_common_sqrts", label: "Estimate Surds" },
 
   ],
   FRACTIONS: [
@@ -1574,129 +1575,181 @@ function genQuestion(topic) {
       };
     }
 
-    case "simplify_fraction": {
-      // ---------- tiny local helpers (self-contained) ----------
-      const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
-      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-      const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+case "simplify_fraction": {
+  // ---------- tiny local helpers ----------
+  const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
 
-      // parse "a/b" or "123"
-      const parseFraction = (s) => {
-        if (s == null) return null;
-        const t = String(s).trim();
-        if (/^\d+$/.test(t)) return [Number(t), 1]; // integer
-        const m = t.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
-        if (!m) return null;
-        const p = Number(m[1]), q = Number(m[2]);
-        if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) return null;
-        return [p, q];
-      };
+  // parse "a/b" or "123" (non-negative only)
+  const parseFraction = (s) => {
+    if (s == null) return null;
+    const t = String(s).trim();
+    if (/^\d+$/.test(t)) return [Number(t), 1]; // integer
+    const m = t.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+    if (!m) return null;
+    const p = Number(m[1]), q = Number(m[2]);
+    if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) return null;
+    return [p, q];
+  };
 
-      // ensure reducible by picking until gcd > 1 (and keep numbers small)
-      function buildNestedOverC() {
-        // (a/b)/c  =>  a/(b*c)
-        // Keep 2..9 to be small; ensure reducible: gcd(a, b*c) > 1
-        for (let tries = 0; tries < 200; tries++) {
-          const a = randInt(2, 9);
-          const b = randInt(2, 9);
-          const c = randInt(2, 9);
-          const P = a, Q = b * c;
-          if (gcd(P, Q) > 1) {
-            const prompt = `Simplify: (${a}/${b})/${c}`;
-            return { P, Q, prompt };
-          }
-        }
-        // fallback (shouldn't hit)
-        return { P: 6, Q: 9, prompt: "Simplify: (6/3)/3" };
+  // ---- KaTeX helpers ----
+  // inner fractions small so the outer bar clearly dominates
+  const innerFrac = (a, b) => `\\tfrac{${a}}{${b}}`;
+  // pad the OUTER fraction with \phantom to visually extend the bar
+  const pad = (s) => `\\phantom{00}${s}\\phantom{00}`;
+  const outerFrac = (num, den) => `\\dfrac{${pad(num)}}{${pad(den)}}`;
+  const par = (s) => `\\left(${s}\\right)`;
+
+  // ---------- pattern builders (return { P, Q, promptLatex }) ----------
+  // (a/b)/c -> a/(b*c), printed with two-digit-ish parts
+  function buildNestedOverC() {
+    for (let t = 0; t < 200; t++) {
+      const a0 = randInt(4, 12), b0 = randInt(4, 12), c0 = randInt(4, 12);
+      const k = randInt(2, 5);
+      const shownNum = innerFrac(a0 * k, b0 * k);
+      const shownDen = String(c0);
+      const P = a0, Q = b0 * c0;                 // true simplified value a0/(b0*c0)
+      if (gcd(P, Q) > 1) {
+        return { P, Q, promptLatex: outerFrac(shownNum, shownDen) };
       }
-
-      function buildNestedOverBoverC() {
-        // a/(b/c)  =>  (a*c)/b
-        // Keep 2..9; ensure reducible: gcd(a*c, b) > 1
-        for (let tries = 0; tries < 200; tries++) {
-          const a = randInt(2, 9);
-          const b = randInt(2, 9);
-          const c = randInt(2, 9);
-          const P = a * c, Q = b;
-          if (gcd(P, Q) > 1) {
-            const prompt = `Simplify: ${a}/(${b}/${c})`;
-            return { P, Q, prompt };
-          }
-        }
-        // fallback
-        return { P: 6, Q: 9, prompt: "Simplify: 6/(9/1)" };
-      }
-
-      function buildFlatEasy() {
-        // Flat: (n0/d0)*k where n0,d0 are small & coprime, k small
-        // This guarantees a simple reduce by k.
-        const small = [2, 3, 4, 5, 6];
-        for (let tries = 0; tries < 200; tries++) {
-          const n0 = randInt(2, 12);
-          const d0 = randInt(2, 12);
-          if (gcd(n0, d0) !== 1) continue;        // want simple reduced base
-          if (n0 === d0) continue;                // avoid trivial 1
-          const k = pick(small);
-          const P = n0 * k;
-          const Q = d0 * k;
-          // both positive (no negatives at all)
-          const prompt = `Simplify: ${P}/${Q}`;
-          return { P, Q, prompt };
-        }
-        // fallback
-        return { P: 8, Q: 12, prompt: "Simplify: 8/12" };
-      }
-
-      // ---------- generation policy ----------
-      // ~80% nested, 20% flat & easy
-      const makeNested = Math.random() < 0.8;
-
-      let P, Q, prompt;
-      if (makeNested) {
-        if (Math.random() < 0.5) {
-          ({ P, Q, prompt } = buildNestedOverC());
-        } else {
-          ({ P, Q, prompt } = buildNestedOverBoverC());
-        }
-      } else {
-        ({ P, Q, prompt } = buildFlatEasy());
-      }
-
-      // ---------- normalize (NO negatives) & simplify ----------
-      // Force non-negative; everything we built is positive, but guard anyway.
-      P = Math.abs(P);
-      Q = Math.abs(Q);
-      if (Q === 0) Q = 1;
-
-      const g = gcd(P, Q);
-      const N = P / g;
-      const D = Q / g;
-
-      const answer = D === 1 ? String(N) : `${N}/${D}`;
-
-      // ---------- checker ----------
-      const checker = (user) => {
-        const parsed = parseFraction(user);
-        if (!parsed) return false;
-        let [uP, uQ] = parsed;
-
-        // disallow negatives entirely (as requested)
-        if (uP < 0 || uQ < 0) return false;
-
-        if (uQ === 0) return false;
-        const gg = gcd(uP, uQ);
-        uP /= gg; uQ /= gg;
-
-        return uP === N && uQ === D;
-      };
-
-      return {
-        prompt,                 // plain text like "Simplify: (a/b)/c" or "a/(b/c)" or "P/Q"
-        answer,                 // canonical simplified positive string
-        acceptableAnswers: [answer],
-        checker
-      };
     }
+    return { P: 8, Q: 12, promptLatex: outerFrac(innerFrac(16, 24), "2") };
+  }
+
+  // a/(b/c) -> (a*c)/b
+  function buildOverBoverC() {
+    for (let t = 0; t < 200; t++) {
+      const b0 = randInt(4, 12), c0 = randInt(4, 12);
+      const a0 = b0 * randInt(2, 5);             // makes shown 'a' two-digit-ish
+      const shownDen = innerFrac(b0, c0);
+      const P = a0 * c0, Q = b0;
+      if (gcd(P, Q) > 1) {
+        return { P, Q, promptLatex: outerFrac(String(a0), shownDen) };
+      }
+    }
+    return { P: 12, Q: 9, promptLatex: outerFrac("18", innerFrac(9, 2)) };
+  }
+
+  // (k a + k b) / (k c) -> (a+b)/c (light nested addition in numerator)
+  function buildAddInNumerator() {
+    for (let t = 0; t < 200; t++) {
+      const a = randInt(4, 12), b = randInt(4, 12), c = randInt(4, 12);
+      const k = randInt(2, 5);
+      const P = a + b, Q = c;
+      if (gcd(P, Q) > 1) {
+        const shownNum = par(`${k*a} + ${k*b}`);
+        const shownDen = String(k*c);
+        return { P, Q, promptLatex: outerFrac(shownNum, shownDen) };
+      }
+    }
+    return { P: 9, Q: 6, promptLatex: outerFrac(par("12 + 6"), "12") };
+  }
+
+  // (k a) / (k b + k c) -> a/(b+c) (light nested addition in denominator)
+  function buildAddInDenominator() {
+    for (let t = 0; t < 200; t++) {
+      const a = randInt(4, 12), b = randInt(4, 12), c = randInt(4, 12);
+      const k = randInt(2, 5);
+      const P = a, Q = b + c;
+      if (gcd(P, Q) > 1) {
+        const shownNum = String(k*a);
+        const shownDen = par(`${k*b} + ${k*c}`);
+        return { P, Q, promptLatex: outerFrac(shownNum, shownDen) };
+      }
+    }
+    return { P: 8, Q: 9, promptLatex: outerFrac("16", par("12 + 6")) };
+  }
+
+  // NEW: Nested addition of FRACTIONS in the denominator:
+  // X / (a/b + c/d)  =>  X * (b*d) / (a*d + b*c)
+  function buildOverSumOfFracs() {
+    for (let t = 0; t < 300; t++) {
+      const a = randInt(3, 12), b = randInt(3, 12);
+      const c = randInt(3, 12), d = randInt(3, 12);
+      const X = randInt(8, 48);                 // two-digit-ish numerator
+      const sumNum = a * d + b * c;             // a/b + c/d = (ad + bc)/(bd)
+      const sumDen = b * d;
+      const P = X * sumDen, Q = sumNum;         // value = X * (bd)/(ad+bc)
+      if (gcd(P, Q) > 1) {
+        const shownDen = `${innerFrac(a, b)} + ${innerFrac(c, d)}`;
+        return { P, Q, promptLatex: outerFrac(String(X), par(shownDen)) };
+      }
+    }
+    // fallback
+    const a=7,b=5,c=2,d=10,X=8;
+    return { P: X*(b*d), Q: a*d + b*c, promptLatex: outerFrac(String(X), par(`${innerFrac(a,b)} + ${innerFrac(c,d)}`)) };
+  }
+
+  // 15%: harder flat that still reduces nicely (e.g., 216/18, 225/15, etc.)
+  function buildHardFlat() {
+    // curated pairs and a generator
+    const curated = [
+      [216, 18], [225, 15], [180, 24], [144, 12], [210, 35], [198, 22], [168, 28], [150, 25]
+    ];
+    if (Math.random() < 0.6) {
+      const [P, Q] = pick(curated);
+      return { P, Q, promptLatex: outerFrac(String(P), String(Q)) };
+    }
+    // generator: (m*k) / m, pick two-digit-ish m*k
+    for (let t = 0; t < 200; t++) {
+      const m = pick([6, 8, 9, 10, 12, 14, 15, 18]);
+      const k = randInt(9, 18);
+      const P = m * k;
+      const Q = m;
+      if (P >= 48 && P <= 300) {
+        return { P, Q, promptLatex: outerFrac(String(P), String(Q)) };
+      }
+    }
+    return { P: 216, Q: 18, promptLatex: outerFrac("216", "18") };
+  }
+
+  // ---------- choose a pattern with weights ----------
+  // 15% hard-flat; otherwise mix, with extra weight on nested and sum-of-fracs.
+  if (Math.random() < 0.15) {
+    var built = buildHardFlat();
+  } else {
+    const choices = [
+      buildNestedOverC,
+      buildOverBoverC,
+      buildAddInNumerator,
+      buildAddInDenominator,
+      buildOverSumOfFracs, // weighted heavier
+      buildOverSumOfFracs
+    ];
+    var built = pick(choices)();
+  }
+
+  let { P, Q, promptLatex } = built;
+
+  // ---------- simplify to canonical positive answer ----------
+  P = Math.abs(P); Q = Math.abs(Q); if (Q === 0) Q = 1;
+  const g0 = gcd(P, Q); const N = P / g0; const D = Q / g0;
+  const answer = D === 1 ? String(N) : `${N}/${D}`;
+
+  // ---------- checker ----------
+  const checker = (user) => {
+    const parsed = parseFraction(user);
+    if (!parsed) return false;
+    let [uP, uQ] = parsed;
+    if (uP < 0 || uQ < 0 || uQ === 0) return false;
+    const g = gcd(uP, uQ); uP /= g; uQ /= g;
+    return uP === N && uQ === D;
+  };
+
+  // Render instructions separately; the TeX is ONLY the math:
+  return {
+    prompt: "Simplify.",
+    promptLatex,                 // RAW TeX (outerFrac padded; inner use \tfrac)
+    answer,
+    acceptableAnswers: [answer],
+    checker
+  };
+}
+
+
+
+
 
 
 
@@ -1752,6 +1805,59 @@ function genQuestion(topic) {
         answer: answer
       };
     }
+case "estimate_common_sqrts": {
+  // Pick from common non-perfect squares
+  const pool = [2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 17, 18, 19];
+  const n = pool[Math.floor(Math.random() * pool.length)];
+
+  // True value and rounded-to-2dp canonical answer
+  const trueVal = Math.sqrt(n);
+  const rounded2 = Math.round(trueVal * 100) / 100;
+  const answer = rounded2.toFixed(2); // canonical "two decimals" string
+
+  // Build a short, helpful explanation
+  // bounds: find k such that k^2 <= n < (k+1)^2
+  const k = Math.floor(Math.sqrt(n));
+  const low = k;
+  const high = k + 1;
+
+  // One Newton step starting from midpoint (or k if you prefer):
+  const x0 = (low + high) / 2;                  // simple start between bounds
+  const x1 = 0.5 * (x0 + n / x0);               // Newton-Raphson refine for sqrt
+  const x1str = (Math.round(x1 * 10000) / 10000).toFixed(4);
+
+  const explanation =
+`Because ${low}^2 = ${low*low} and ${high}^2 = ${high*high}, we know √${n} is between ${low} and ${high}.
+A quick refine (Newton’s method) from ${(x0).toFixed(2)} gives:
+x₁ = ½(x₀ + ${n}/x₀) ≈ ${x1str}
+Rounded to 2 d.p., √${n} ≈ ${answer}.`;
+
+  // KaTeX prompt (your renderer shows this under the title)
+  const prompt = "Estimate to 2 d.p.";
+  const promptLatex = `\\( \\sqrt{${n}} \\)`;
+
+  // Checker: accept numbers that round to the same 2 d.p.
+  // Tolerance: within 0.005 of the true value, i.e., correct nearest rounding.
+  const checker = (user) => {
+    if (user == null) return false;
+    const u = Number(String(user).trim().replace(/,/g, ""));
+    if (!Number.isFinite(u)) return false;
+    // must round to the same 2 d.p. as the canonical
+    const userRounded2 = Math.round(u * 100) / 100;
+    if (userRounded2.toFixed(2) === answer) return true;
+    // also accept strict tolerance around the true value (defensive)
+    return Math.abs(u - trueVal) < 0.005;
+  };
+
+  return {
+    prompt,           // small instruction line
+    promptLatex,      // the math to render (KaTeX)
+    answer,           // e.g., "1.41"
+    acceptableAnswers: [answer],
+    explanation,      // shown when you reveal
+    checker
+  };
+}
 
     // Percentages — fairly nice but varied
     case "percent_calc": {
@@ -3363,6 +3469,53 @@ function SuggestionsPanel() {
 
 
 function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash, onExit, onFinish }) {
+  const promptRef = React.useRef(null);
+
+function RenderPrompt({ prompt, promptLatex }) {
+  // Highest priority: explicit promptLatex
+  if (typeof promptLatex === 'string' && promptLatex.trim().length) {
+    return (
+      <div className="flex items-center justify-center gap-2 flex-wrap">
+        {prompt ? <span>{prompt}</span> : null}
+        <InlineMath math={promptLatex} />
+      </div>
+    );
+  }
+
+  // Backward-compat: parse "(...)" or "$...$" from a single text string
+  const s = String(prompt ?? '');
+  // $$...$$ → Block
+  const block = s.match(/\$\$([\s\S]+?)\$\$/);
+  if (block) {
+    const before = s.slice(0, block.index).trim();
+    const after  = s.slice(block.index + block[0].length).trim();
+    return (
+      <div className="flex flex-col items-center gap-2">
+        {before && <div>{before}</div>}
+        <BlockMath math={block[1]} />
+        {after && <div>{after}</div>}
+      </div>
+    );
+  }
+  // \( ... \) or $...$ → Inline (first match only, simple)
+  const inline = s.match(/\\\(([\s\S]+?)\\\)/) || s.match(/\$([\s\S]+?)\$/);
+  if (inline) {
+    const start = inline.index ?? 0;
+    const end = start + inline[0].length;
+    const before = s.slice(0, start);
+    const after  = s.slice(end);
+    return (
+      <div className="flex items-center justify-center gap-2 flex-wrap">
+        {before.trim() && <span>{before.trim()}</span>}
+        <InlineMath math={inline[1]} />
+        {after.trim() && <span>{after.trim()}</span>}
+      </div>
+    );
+  }
+
+  // Plain text fallback
+  return <>{s || 'Preparing…'}</>;
+}
   function recordCorrect() {
     const dt = (Date.now() - qStart.current) / 1000;
     times.current.push(dt);
@@ -3891,6 +4044,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     }
   }
 
+
   // ADD: a pure one-shot checker we can call from Enter or the primary button
   const checkOnce = () => {
     if (!current) return false;
@@ -4079,7 +4233,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                   transition={{ duration: 0.08 }}
                 >
                   <div className="text-3xl sm:text-4xl font-semibold tracking-tight mt-2 min-h-[2.6em] flex items-center justify-center">
-                    {hidden ? "" : (current?.prompt || "Preparing…")}
+                    {hidden ? "" : <RenderPrompt prompt={current?.prompt} promptLatex={current?.promptLatex} />}
                   </div>
 
                   {!hidden && current?.diagram?.type === "triangle" && (
