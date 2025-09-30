@@ -310,7 +310,7 @@ export default function GlobalLeaderboard({ topicMap, currentUserId, currentDisp
       prev.sessions += 1;
       prev.attempts += attempts;
       prev.correct  += correct;
-      prev.minutes  += (r.durationsec || 0);
+      prev.minutes  += (r.duration_sec || 0);
       prev.bestScore = Math.max(prev.bestScore, r.score || 0);
       prev.bestAcc   = Math.max(prev.bestAcc, r.accuracy || 0);
       map.set(key, prev);

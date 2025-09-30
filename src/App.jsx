@@ -2963,7 +2963,7 @@ export default function App() {
                     accuracy: entry.accuracy,
                     attempts: entry.attempts,
                     correct: entry.correct,
-                    duration_sec: entry.duration_sec,
+                    duration_sec: entry.durationSec,
                     topics: entry.topics, // make sure this is an array
                     created_at: new Date().toISOString()
                   }]);
