@@ -9,7 +9,7 @@ import { hasRunOnce, markRunOnce } from "./lib/once";
 import { createPreset, listPresets, deletePreset } from "./data/presets";
 import PortalTooltip from "./components/PortalTooltip";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { LogOut, LogIn, Pencil, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, User2, Check, Trash2, Trophy, Globe2, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle} from "lucide-react";
+import { LogOut, LogIn, Pencil, X, HelpCircle, Send, Play, Save, Clock, FolderOpen, BookOpen, User2, Check, Trash2, Trophy, Globe2, Eye, GripVertical, Wrench, Plus, ChevronLeft, ChevronRight, ArrowLeft, AlertTriangle } from "lucide-react";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { DndContext, useDroppable, useDraggable, pointerWithin, DragOverlay } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -194,7 +194,7 @@ function TopicRow({ id, label, onAdd }) {
 // ---------- Styling helpers ----------
 // Parse scientific notation variants: "a×10^n", "a*10^-n", "a e n"
 function parseSci(s) {
-  const t = (s||"").trim()
+  const t = (s || "").trim()
     .replace(/\s+/g, "")
     .replace(/×/g, "*")
     .replace(/⋅/g, "*")
@@ -203,15 +203,15 @@ function parseSci(s) {
 
   // a*10^n
   let m = t.match(/^([+-]?\d+(?:\.\d+)?)\*10\^([+-]?\d+)$/);
-  if (m) return { a:+m[1], n:+m[2] };
+  if (m) return { a: +m[1], n: +m[2] };
 
   // a*10^-n (already covered by previous), kept for safety
   m = t.match(/^([+-]?\d+(?:\.\d+)?)\*10\^([+-]?\d+)$/);
-  if (m) return { a:+m[1], n:+m[2] };
+  if (m) return { a: +m[1], n: +m[2] };
 
   // a e n
   m = t.match(/^([+-]?\d+(?:\.\d+)?)[e]([+-]?\d+)$/);
-  if (m) return { a:+m[1], n:+m[2] };
+  if (m) return { a: +m[1], n: +m[2] };
 
   return null;
 }
@@ -225,7 +225,7 @@ function toScientific(x) {
   // normalize to [1,10)
   let A = a, N = n;
   if (Math.abs(A) >= 10) { A /= 10; N += 1; }
-  if (Math.abs(A) < 1)   { A *= 10; N -= 1; }
+  if (Math.abs(A) < 1) { A *= 10; N -= 1; }
   // round A to a sensible length
   const Ar = Math.round(A * 1000) / 1000;
   return { a: Ar, n: N };
@@ -233,32 +233,32 @@ function toScientific(x) {
 
 
 const median = (a) => {
-  if (a.length===0) return 0;
-  const s=[...a].sort((x,y)=>x-y), m=Math.floor(s.length/2);
-  return s.length%2 ? s[m] : 0.5*(s[m-1]+s[m]);
+  if (a.length === 0) return 0;
+  const s = [...a].sort((x, y) => x - y), m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : 0.5 * (s[m - 1] + s[m]);
 };
 const mad = (a, m = median(a)) => {
-  if (a.length===0) return 0;
-  const dev = a.map(x=>Math.abs(x-m));
+  if (a.length === 0) return 0;
+  const dev = a.map(x => Math.abs(x - m));
   return median(dev) || 0;
 };
-const winsorizeAround = (a, centre, spread, k=3) => {
+const winsorizeAround = (a, centre, spread, k = 3) => {
   if (!a.length) return a;
-  const lo = centre - k*spread;
-  const hi = centre + k*spread;
+  const lo = centre - k * spread;
+  const hi = centre + k * spread;
   return a.map(x => clamp(x, lo, hi));
 };
 function wilsonLowerBound(successes, trials, z = 1.96) {
   if (!trials || trials <= 0) return 0;
   const p = successes / trials;
-  const denom  = 1 + (z*z)/trials;
-  const centre = p + (z*z)/(2*trials);
-  const margin = z * Math.sqrt((p*(1-p) + (z*z)/(4*trials)) / trials);
+  const denom = 1 + (z * z) / trials;
+  const centre = p + (z * z) / (2 * trials);
+  const margin = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * trials)) / trials);
   return Math.max(0, (centre - margin) / denom);
 }
 function normalCDF(z) {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const d = 0.3989423 * Math.exp(-z*z/2);
+  const d = 0.3989423 * Math.exp(-z * z / 2);
   const prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
   return z > 0 ? 1 - prob : prob;
 }
@@ -288,13 +288,19 @@ const CATEGORIES = {
     { id: "squares", label: "Squares" },
     { id: "cubes", label: "Cubes" },
     { id: "quadratics_eval", label: "Quadratic Functions" },
-    { id: "percent_calc", label: "Percentages" },
-    { id: "speed_basic", label: "Speed = Distance / Time" },
+    { id: "percent_calc", label: "Percentages" },    
     { id: "prime_factorise", label: "Prime Factorisation" },   // ⬅️ new
     { id: "powers_mixed", label: "Powers of 2" },
     { id: "divisibility_rules", label: "Divisbility Rule" },
     { id: "sci_rewrite", label: "Divisbility Rule" },
-    { id: "common_multiples", label: "Common multiples in ESAT" },
+    { id: "common_multiples", label: "Common multiples" },
+    { id: "common_multiples_reverse", label: "Reversed Multiples" },
+
+    { id: "diff_speed", label: "Differentiate" },
+    { id: "two_power_fraction", label: "Powers of 2, fraction." },
+    { id: "diff_speed", label: "Differentiate" },
+    { id: "integrate_speed", label: "Integrate" },
+
   ],
   FRACTIONS: [
     { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
@@ -307,6 +313,9 @@ const CATEGORIES = {
     { id: "binomial_expand", label: "Binomial Expansion" },
   ],
   EQUATIONS: [
+    { id: "speed_basic", label: "Speed equation" },
+    { id: "wave_basic", label: "Waves Equation" },
+    { id: "ohms_law_basic", label: "Ohms Law equation" },
     { id: "suvat_solve", label: "SUVAT" },
     { id: "units_con vert", label: "Units (SI)" },
     { id: "sphere_volume", label: "Sphere Volume" },
@@ -331,7 +340,7 @@ const CATEGORIES = {
 const PRESETS = [
   { name: "MENTAL CALCULATIONS", topics: ["mental_add", "mental_sub", "mental_mul", "mul_focus_multiples", "mental_div"] },
   { name: "TRIGONOMETRY", topics: ["trig_recall", "trig_eval"] },
-  { name: "GEOMETRY SA/V", topics: ["sphere_volume","sphere_area","cylinder_sa","cone_sa","square_pyramid_sa"] },
+  { name: "GEOMETRY SA/V", topics: ["sphere_volume", "sphere_area", "cylinder_sa", "cone_sa", "square_pyramid_sa"] },
   { name: "EQUATIONS MIX", topics: ["suvat_solve", "speed_basic", "units_convert"] },
 ];
 const TUTORIAL_SLIDES = [
@@ -389,22 +398,22 @@ function useLeaderboard() {
 // ---------- Utils ----------
 function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 function pick(arr) { return arr[randInt(0, arr.length - 1)]; }
-function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
 // Superscript for nice-looking exponents in prompts
-const SUP = { "-":"⁻", "0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹" };
-function toSup(n){ return String(n).split("").map(ch => SUP[ch] ?? ch).join(""); }
+const SUP = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+function toSup(n) { return String(n).split("").map(ch => SUP[ch] ?? ch).join(""); }
 
 // ----- Superscript helpers (for input beautify + parsing) -----
 const SUP_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 const SUP_MINUS = "⁻";
 const DIGITS = "0123456789";
 
-function mean(arr){ return arr.length ? arr.reduce((s,x)=>s+x,0) / arr.length : 0; }
+function mean(arr) { return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0; }
 
 // Use entry.accuracy if present (it’s already Laplace-smoothed in computeScore),
 // else fall back to (correct+1)/(attempts+2)
-function entryAcc(e){
+function entryAcc(e) {
   if (Number.isFinite(e?.accuracy)) return e.accuracy;
   const c = e?.correct ?? 0, a = e?.attempts ?? 0;
   return (c + 1) / (a + 2);
@@ -432,13 +441,13 @@ function beautifyInline(s) {
 }
 
 // Fractions helpers
-function reduceFraction(p, q){
+function reduceFraction(p, q) {
   const g = gcd(p, q);
   p /= g; q /= g;
   if (q < 0) { p = -p; q = -q; } // normalize sign
   return [p, q];
 }
-function formatFraction(p, q){
+function formatFraction(p, q) {
   const [P, Q] = reduceFraction(p, q);
   return Q === 1 ? String(P) : `${P}/${Q}`;
 }
@@ -452,7 +461,7 @@ function isUndefLike(s) {
   const n = normalizeString(s);
   return UNDEF_SET.has(n);
 }
-function normalizeString(s){ return (s??"").toString().trim().toLowerCase().replace(/\s+/g,""); }
+function normalizeString(s) { return (s ?? "").toString().trim().toLowerCase().replace(/\s+/g, ""); }
 
 
 function answersMatch(user, correct) {
@@ -500,7 +509,7 @@ function evalExprAtX(expr, x) {
 }
 
 
-function equalish(userInput, expected){
+function equalish(userInput, expected) {
   const uNorm = normalizeString(userInput);
   const eNorm = normalizeString(expected);
   if (UNDEF_SET.has(eNorm)) return UNDEF_SET.has(uNorm);
@@ -513,7 +522,7 @@ function equalish(userInput, expected){
   // Algebraic fallback: compare functions of x
   const maybeAlgebra = /[a-z]/i.test(userInput + expected) || /[²³]/.test(userInput + expected);
   if (maybeAlgebra) {
-    const xs = [-3,-2,-1,-0.5,0,0.5,1,2,3,4];
+    const xs = [-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 4];
     let ok = 0, tot = 0;
     for (const x of xs) {
       try {
@@ -590,8 +599,8 @@ async function updateGlobalDisplayName(userId, displayName) {
   if (lErr) throw lErr;
 }
 
-const CALC_IDS = new Set(CATEGORIES.CALCULATION.map(t=>t.id));
-const isCalc = (id)=> CALC_IDS.has(id);
+const CALC_IDS = new Set(CATEGORIES.CALCULATION.map(t => t.id));
+const isCalc = (id) => CALC_IDS.has(id);
 // ---------- MathJax helpers ----------
 function normalizeToJS(expr) {
   if (expr == null) return "";
@@ -614,7 +623,7 @@ function normalizeToJS(expr) {
   s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
 
   // ---- FULL superscript support (0–9 and minus) ----
-  const SUP_TO_ASC = { "⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9","⁻":"-" };
+  const SUP_TO_ASC = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-" };
   s = s.replace(/([A-Za-z0-9_.\)])([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_, base, sup) => {
     const dec = sup.split("").map(ch => SUP_TO_ASC[ch] ?? "").join("");
     return `(${base})**${dec}`;
@@ -640,7 +649,7 @@ function toTexFromPlain(s) {
   // try to balance the closing brace when user types ')'
   // we won't be perfect, but good enough for live preview
   let open = 0;
-  t = t.replace(/\{/g, m => (open++, m)).replace(/\}/g, m => (open = Math.max(0, open-1), m));
+  t = t.replace(/\{/g, m => (open++, m)).replace(/\}/g, m => (open = Math.max(0, open - 1), m));
   // replace ')' with '}' only to close \sqrt{...}
   t = t.replace(/\)/g, () => open > 0 ? '}' : ')');
 
@@ -771,7 +780,7 @@ function SortableTopicChip({ id, label, onRemove }) {
 
 
 // Editable Flash Timer when inside the folder — now full width
-function FolderFlashTimerEditor({ value, onChange, onRemove }){
+function FolderFlashTimerEditor({ value, onChange, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: "flash_timer" });
   const style = { transform: CSS.Transform.toString(transform), transition };
   return (
@@ -784,38 +793,38 @@ function FolderFlashTimerEditor({ value, onChange, onRemove }){
         <label className="flex items-center gap-2 ml-2 text-xs">
           <span className="text-white/60">Hide after</span>
           <input type="number" step="0.1" min={0.1} value={value}
-            onChange={(e)=>onChange(parseFloat(e.target.value)||0)}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
             className="bg-transparent outline-none border-none w-20 text-white placeholder:text-white/40" />
           <span className="text-white/60">s</span>
         </label>
-        <button onClick={onRemove} className="ml-auto opacity-60 hover:opacity-100" aria-label="Remove Flash Timer"><X size={14}/></button>
+        <button onClick={onRemove} className="ml-auto opacity-60 hover:opacity-100" aria-label="Remove Flash Timer"><X size={14} /></button>
       </div>
     </div>
   );
 }
 
-function gcd(a, b){ a=Math.abs(a); b=Math.abs(b); while (b){ [a,b]=[b, a%b]; } return a || 1; }
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a || 1; }
 
-function weightedPick(entries){
+function weightedPick(entries) {
   // entries: [[value, weight], ...]
-  const total = entries.reduce((s, [,w])=>s+w, 0);
+  const total = entries.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
-  for (const [v,w] of entries){
+  for (const [v, w] of entries) {
     if ((r -= w) <= 0) return v;
   }
   return entries[entries.length - 1][0];
 }
 
-function weightedPick2(entries){
+function weightedPick2(entries) {
   // entries: [[value, weight], ...]
-  const total = entries.reduce((s, [,w])=>s+w, 0);
+  const total = entries.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
-  for (const [v,w] of entries){
+  for (const [v, w] of entries) {
     if ((r -= w) <= 0) return v;
   }
   return entries[entries.length - 1][0];
 }
-function isTerminatingDenom(q){
+function isTerminatingDenom(q) {
   // q should be the reduced denominator
   let x = q;
   while (x % 2 === 0) x /= 2;
@@ -862,10 +871,113 @@ function genQuestion(topic) {
       return { prompt, answer: canonical, acceptableAnswers: acceptable, checker };
     }
 
+    /* =========================================
+   BYTE-SIZED: Differentiation speed drills
+   Generates random k·x^n (n ∈ ℤ or halves; n ≠ -1)
+   Canonical form uses ^ and real d/dx notation
+========================================= */
+    /* =========================================
+       BYTE-SIZED: Differentiation speed drills
+    ========================================= */
+    case "diff_speed": {
+      const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+      const simp = (n, d) => { const g = gcd(n, d); return [n / g, d / g]; };
+      const asFrac = (n, d) => `(${n}/${d})`;
+
+      const pickLocal = (arr) => (typeof pick === "function" ? pick(arr) : arr[Math.floor(Math.random() * arr.length)]);
+
+      // coefficient
+      const [kNum, kDen] = pickLocal([[1, 1], [2, 1], [3, 1], [-1, 1], [1, 2], [3, 2]]);
+
+      // exponent (avoid -1)
+      const useHalf = Math.random() < 0.3;
+      let nNum, nDen;
+      if (useHalf) [nNum, nDen] = pickLocal([[1, 2], [3, 2], [-1, 2]]);
+      else { nNum = pickLocal([-5, -4, -3, -2, 2, 3, 4, 5]); nDen = 1; }
+
+      // derivative coeff
+      let dNum = kNum * nNum, dDen = kDen * nDen;
+      [dNum, dDen] = simp(dNum, dDen);
+
+      // new power
+      let mNum = nNum - nDen, mDen = nDen;
+      [mNum, mDen] = simp(mNum, mDen);
+
+      // --- string builders ---
+      const powerStr = (p, q) => q === 1 ? toSup(p) : `^(${p}/${q})`;
+      const kStr = (kDen === 1 ? (kNum === 1 ? "" : kNum === -1 ? "-" : String(kNum)) : asFrac(kNum, kDen));
+      const nStr = powerStr(nNum, nDen);
+      const integrand = `${kStr}x${nStr}`;
+
+      let ans;
+      if (dNum === 0) ans = "0";
+      else if (mNum === 0) ans = (dDen === 1 ? String(dNum) : asFrac(dNum, dDen));
+      else {
+        const coefStr = (dDen === 1 ? (Math.abs(dNum) === 1 ? (dNum === -1 ? "-" : "") : String(dNum)) : asFrac(dNum, dDen));
+        const mStr = powerStr(mNum, mDen);
+        ans = `${coefStr}x${mStr}`;
+      }
+
+      return {
+        prompt: `Differentiate: d/dx [ ${integrand} ]`,
+        answer: ans,
+        acceptableAnswers: [ans],
+      };
+    }
+
+    /* =========================================
+       BYTE-SIZED: Integration speed drills
+    ========================================= */
+    case "integrate_speed": {
+      const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+      const simp = (n, d) => { const g = gcd(n, d); return [n / g, d / g]; };
+      const asFrac = (n, d) => `(${n}/${d})`;
+      const withC = (s) => `${s} + C`;
+
+      const pickLocal = (arr) => (typeof pick === "function" ? pick(arr) : arr[Math.floor(Math.random() * arr.length)]);
+
+      // coefficient
+      const [kNum, kDen] = pickLocal([[1, 1], [2, 1], [3, 1], [-1, 1], [1, 2], [3, 2], [9, 1]]);
+
+      // exponent (include -1 for ln)
+      const useHalf = Math.random() < 0.3;
+      let nNum, nDen;
+      if (useHalf) [nNum, nDen] = pickLocal([[1, 2], [3, 2], [-1, 2]]);
+      else { nNum = pickLocal([-5, -4, -3, -2, -1, 2, 3, 4, 5]); nDen = 1; }
+
+      // --- string builders ---
+      const powerStr = (p, q) => q === 1 ? toSup(p) : `^(${p}/${q})`;
+      const kStr = (kDen === 1 ? (kNum === 1 ? "" : kNum === -1 ? "-" : String(kNum)) : asFrac(kNum, kDen));
+      const nStr = powerStr(nNum, nDen);
+      const integrand = `${kStr}x${nStr}`;
+
+      // --- answer ---
+      let ans;
+      if (nNum === -1 && nDen === 1) {
+        // ln case
+        const coef = (kDen === 1 ? (Math.abs(kNum) === 1 ? (kNum === -1 ? "-" : "") : String(kNum)) : asFrac(kNum, kDen));
+        ans = withC(`${coef}ln|x|`);
+      } else {
+        let p = nNum + nDen, q = nDen;
+        let num = kNum * q, den = kDen * p;
+        [num, den] = simp(num, den);
+        const coef = (den === 1 ? String(num) : asFrac(num, den));
+        const expStr = powerStr(p, q);
+        ans = withC(`${coef}x${expStr}`);
+      }
+
+      return {
+        prompt: `Integrate: ∫ ${integrand} dx`,
+        answer: ans,
+        acceptableAnswers: [ans],
+      };
+    }
+
+
     case "mental_add": { const a = randInt(10, 999), b = randInt(10, 999); return { prompt: `${a} + ${b}`, answer: String(a + b) }; }
     case "mental_sub": { const a = randInt(100, 999), b = randInt(10, 999); const [x, y] = a > b ? [a, b] : [b, a]; return { prompt: `${x} - ${y}`, answer: String(x - y) }; }
     case "mental_mul": { const a = randInt(10, 99), b = randInt(2, 9); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
-    case "mul_focus_multiples": { const a = pick([12,13,14,15,16,25]); const b = randInt(1, 12); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
+    case "mul_focus_multiples": { const a = pick([12, 13, 14, 15, 16, 25]); const b = randInt(1, 12); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
     case "tri_special": {
       // Canonical layout: right angle at A (bottom-left), base=AB (horizontal), vertical=AC (up)
       const type = pick(["30-60-90", "45-45-90"]);
@@ -878,7 +990,7 @@ function genQuestion(topic) {
           exact: exactStr,
           acceptable: [
             exactStr,
-            exactStr.replace("√3", "sqrt(3)").replace("√2", "sqrt(2)").replace(/\s+/g,''),
+            exactStr.replace("√3", "sqrt(3)").replace("√2", "sqrt(2)").replace(/\s+/g, ''),
             approx,
           ],
         };
@@ -886,19 +998,19 @@ function genQuestion(topic) {
 
       if (type === "30-60-90") {
         // sides: short = u (AC), long = u√3 (AB), hyp = 2u (BC)
-        const exact = { short: `${u}`, long: `${u}√3`, hyp: `${2*u}` };
-        const numeric = { short: u, long: u*Math.sqrt(3), hyp: 2*u };
+        const exact = { short: `${u}`, long: `${u}√3`, hyp: `${2 * u}` };
+        const numeric = { short: u, long: u * Math.sqrt(3), hyp: 2 * u };
 
         if (mode === "length") {
-          const sides = ["short","long","hyp"];
+          const sides = ["short", "long", "hyp"];
           const given = pick(sides);
           const unknown = sides.find(s => s !== given);
 
           const ans = makeAns(exact[unknown], numeric[unknown]);
           const labels = { base: "", vertical: "", hyp: "" };
-          const setLabel = (side,text)=>{
-            if (side==="long") labels.base = text;
-            else if (side==="short") labels.vertical = text;
+          const setLabel = (side, text) => {
+            if (side === "long") labels.base = text;
+            else if (side === "short") labels.vertical = text;
             else labels.hyp = text;
           };
           setLabel(given, exact[given]);
@@ -906,7 +1018,7 @@ function genQuestion(topic) {
 
           // Angle hint (always include to avoid underspecification)
           // In our canonical layout: ∠B = 30°, ∠C = 60°
-          const angleHint = pick(["30B","60C"]);
+          const angleHint = pick(["30B", "60C"]);
 
           return {
             prompt: "Find x",
@@ -925,14 +1037,14 @@ function genQuestion(topic) {
           // ANGLE mode: give ANY TWO sides + right angle, ask for θ at B or C.
           // Choose which two numeric sides to show:
           const two = pick([
-            ["short","hyp"],  // determines 30° at B
-            ["long","hyp"],   // determines 60° at B
-            ["short","long"]  // also sufficient
+            ["short", "hyp"],  // determines 30° at B
+            ["long", "hyp"],   // determines 60° at B
+            ["short", "long"]  // also sufficient
           ]);
-          const labels = { base:"", vertical:"", hyp:"" };
-          const put = (side, text)=>{
-            if (side==="long") labels.base = text;
-            else if (side==="short") labels.vertical = text;
+          const labels = { base: "", vertical: "", hyp: "" };
+          const put = (side, text) => {
+            if (side === "long") labels.base = text;
+            else if (side === "short") labels.vertical = text;
             else labels.hyp = text;
           };
           put(two[0], exact[two[0]]);
@@ -941,7 +1053,7 @@ function genQuestion(topic) {
           // Decide θ location
           // If we place θ at B: opposite is vertical (short) → 30°
           // If we place θ at C: opposite is base (long) → 60°
-          const thetaAt = pick(["B","C"]);
+          const thetaAt = pick(["B", "C"]);
           const theta = (thetaAt === "B") ? 30 : 60;
 
           return {
@@ -961,14 +1073,14 @@ function genQuestion(topic) {
       } else {
         // 45-45-90: legs = u (AB & AC), hyp = u√2 (BC)
         const exact = { leg: `${u}`, hyp: `${u}√2` };
-        const numeric = { leg: u, hyp: u*Math.sqrt(2) };
+        const numeric = { leg: u, hyp: u * Math.sqrt(2) };
 
         if (mode === "length") {
-          const sides = ["leg","hyp"];
+          const sides = ["leg", "hyp"];
           const given = pick(sides);
           const unknown = sides.find(s => s !== given);
 
-          const ans = makeAns(unknown==="leg" ? exact.leg : exact.hyp, unknown==="leg" ? numeric.leg : numeric.hyp);
+          const ans = makeAns(unknown === "leg" ? exact.leg : exact.hyp, unknown === "leg" ? numeric.leg : numeric.hyp);
           const labels = { base: "", vertical: "", hyp: "" };
           if (given === "leg") labels.base = exact.leg; else labels.hyp = exact.hyp;
           if (unknown === "leg") { if (labels.base) labels.vertical = "x"; else labels.base = "x"; } else { labels.hyp = "x"; }
@@ -989,13 +1101,13 @@ function genQuestion(topic) {
         } else {
           // ANGLE mode: any two sides + right angle ⇒ θ is 45° at B or C
           const labels = { base: exact.leg, vertical: exact.leg, hyp: "" }; // show both legs
-          const thetaAt = pick(["B","C"]);
+          const thetaAt = pick(["B", "C"]);
           const theta = 45;
 
           return {
             prompt: "Find θ (in degrees)",
             answer: "45",
-            acceptableAnswers: ["45","45°"],
+            acceptableAnswers: ["45", "45°"],
             diagram: {
               type: "45-45-90",
               lengths: { base: numeric.leg, vertical: numeric.leg },
@@ -1072,7 +1184,7 @@ function genQuestion(topic) {
         }
       };
     }
-    
+
     case "divisibility_rules": {
       const divisors = [3, 4, 6, 7, 8, 9, 11];
       const d = pick(divisors);
@@ -1113,6 +1225,97 @@ function genQuestion(topic) {
       };
     }
 
+
+
+
+
+
+    case "indices_simplify": {
+      const base = pick([2, 3, 5, 10]);
+      const termCount = pick([2, 3, 3, 4]); // mostly 3 terms
+
+      let numerator = [];
+      let denominator = [];
+      let net = 0;
+
+      for (let i = 0; i < termCount; i++) {
+        const exp = pick([-9, -6, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8]);
+        const piece = `${base}${toSup(exp)}`;
+        if (i === 0 || Math.random() < 0.6) {
+          numerator.push(piece); net += exp;
+        } else {
+          denominator.push(piece); net -= exp;
+        }
+      }
+
+      // textual version (fallback)
+      const exprText = denominator.length > 0
+        ? `(${numerator.join(" × ")}) / (${denominator.join(" × ")})`
+        : numerator.join(" × ");
+
+      // 35% of the time: render a **nested TeX fraction** prompt (pretty)
+      const asNested = Math.random() < 0.35;
+
+      function toTexPower(p) {
+        // "2⁻³" → "2^{-3}"
+        const m = p.match(/^(\d+)([⁻⁰¹²³⁴⁵⁶⁷⁸⁹-]+)$/);
+        if (!m) return p;
+        const b = m[1];
+        const sup = m[2]
+          .replace(/⁻/g, '-')
+          .replace(/⁰/g, '0').replace(/¹/g, '1').replace(/²/g, '2').replace(/³/g, '3')
+          .replace(/⁴/g, '4').replace(/⁵/g, '5').replace(/⁶/g, '6').replace(/⁷/g, '7')
+          .replace(/⁸/g, '8').replace(/⁹/g, '9');
+        return `${b}^{${sup}}`;
+      }
+      function buildNestedTex(numArr, denArr) {
+        // up to 3-level nesting: \dfrac{ a × \dfrac{...}{...} }{ ... }
+        const texListNum = numArr.map(toTexPower);
+        const texListDen = denArr.map(toTexPower);
+
+        const mkProd = arr => arr.length ? arr.join('\\,\\cdot\\,') : '1';
+
+        // zero/one/two levels based on available terms
+        if (!texListDen.length) return mkProd(texListNum);
+
+        // level 1
+        let top = mkProd(texListNum.slice(0, Math.max(1, Math.ceil(texListNum.length / 2))));
+        let bottom = mkProd(texListDen.slice(0, Math.max(1, Math.ceil(texListDen.length / 2))));
+        let frac1 = `\\dfrac{${top}}{${bottom}}`;
+
+        // maybe level 2
+        const restNum = texListNum.slice(Math.max(1, Math.ceil(texListNum.length / 2)));
+        const restDen = texListDen.slice(Math.max(1, Math.ceil(texListDen.length / 2)));
+        if (restNum.length || restDen.length) {
+          const top2 = restNum.length ? mkProd(restNum) : '1';
+          const bot2 = restDen.length ? mkProd(restDen) : '1';
+          frac1 = `\\dfrac{${frac1}}{\\dfrac{${top2}}{${bot2}}}`;
+        }
+
+        return frac1;
+      }
+
+      const promptPretty = `Simplify: ${exprText}`;  // plain text only, no TeX
+
+
+      // Correct answer in simplified index form
+      let answerStr;
+      if (net === 0) {
+        answerStr = "1";
+      } else if (net > 0) {
+        answerStr = `${base}^${net}`;
+      } else {
+        const k = -net; answerStr = `1/${base}^${k}`;
+      }
+      const value = Math.pow(base, net);
+      const numeric = String(value);
+
+      return {
+        prompt: promptPretty,
+        answer: answerStr,
+        acceptableAnswers: [answerStr, numeric, answerStr.replace(/\^/g, "**")],
+      };
+    }
 
     case "circle_theorems": {
       // helpers
@@ -1239,7 +1442,7 @@ function genQuestion(topic) {
       } else if (scenario === "intersecting_chords_inside") {
         // chords AB and CD intersect at X inside: AX·BX = CX·DX
         const A = 20, B = 200, C = 300, D = 80; // positions that guarantee inside crossing
-        
+
         diagram.points = [{ name: "A", deg: A }, { name: "B", deg: B }, { name: "C", deg: C }, { name: "D", deg: D }, { name: "O", deg: null }];
         diagram.chords = [["A", "B"], ["C", "D"]];
 
@@ -1304,99 +1507,8 @@ function genQuestion(topic) {
       return { prompt, answer, acceptableAnswers: acceptable, diagram };
     }
 
-
-
-    case "indices_simplify": {
-      const base = pick([2,3,5,10]);
-      const termCount = pick([2,3,3,4]); // mostly 3 terms
-
-      let numerator = [];
-      let denominator = [];
-      let net = 0;
-
-      for (let i = 0; i < termCount; i++) {
-        const exp = pick([-9,-6,-4,-3,-2,-1,1,2,3,4,5,6,7,8]);
-        const piece = `${base}${toSup(exp)}`;
-        if (i === 0 || Math.random() < 0.6) {
-          numerator.push(piece); net += exp;
-        } else {
-          denominator.push(piece); net -= exp;
-        }
-      }
-
-      // textual version (fallback)
-      const exprText = denominator.length > 0
-        ? `(${numerator.join(" × ")}) / (${denominator.join(" × ")})`
-        : numerator.join(" × ");
-
-      // 35% of the time: render a **nested TeX fraction** prompt (pretty)
-      const asNested = Math.random() < 0.35;
-
-      function toTexPower(p) {
-        // "2⁻³" → "2^{-3}"
-        const m = p.match(/^(\d+)([⁻⁰¹²³⁴⁵⁶⁷⁸⁹-]+)$/);
-        if (!m) return p;
-        const b = m[1];
-        const sup = m[2]
-          .replace(/⁻/g,'-')
-          .replace(/⁰/g,'0').replace(/¹/g,'1').replace(/²/g,'2').replace(/³/g,'3')
-          .replace(/⁴/g,'4').replace(/⁵/g,'5').replace(/⁶/g,'6').replace(/⁷/g,'7')
-          .replace(/⁸/g,'8').replace(/⁹/g,'9');
-        return `${b}^{${sup}}`;
-      }
-      function buildNestedTex(numArr, denArr) {
-        // up to 3-level nesting: \dfrac{ a × \dfrac{...}{...} }{ ... }
-        const texListNum = numArr.map(toTexPower);
-        const texListDen = denArr.map(toTexPower);
-
-        const mkProd = arr => arr.length ? arr.join('\\,\\cdot\\,') : '1';
-
-        // zero/one/two levels based on available terms
-        if (!texListDen.length) return mkProd(texListNum);
-
-        // level 1
-        let top = mkProd(texListNum.slice(0, Math.max(1, Math.ceil(texListNum.length/2))));
-        let bottom = mkProd(texListDen.slice(0, Math.max(1, Math.ceil(texListDen.length/2))));
-        let frac1 = `\\dfrac{${top}}{${bottom}}`;
-
-        // maybe level 2
-        const restNum = texListNum.slice(Math.max(1, Math.ceil(texListNum.length/2)));
-        const restDen = texListDen.slice(Math.max(1, Math.ceil(texListDen.length/2)));
-        if (restNum.length || restDen.length) {
-          const top2 = restNum.length ? mkProd(restNum) : '1';
-          const bot2 = restDen.length ? mkProd(restDen) : '1';
-          frac1 = `\\dfrac{${frac1}}{\\dfrac{${top2}}{${bot2}}}`;
-        }
-
-        return frac1;
-      }
-
-      const promptPretty = `Simplify: ${exprText}`;  // plain text only, no TeX
-
-
-      // Correct answer in simplified index form
-      let answerStr;
-      if (net === 0) {
-        answerStr = "1";
-      } else if (net > 0) {
-        answerStr = `${base}^${net}`;
-      } else {
-        const k = -net; answerStr = `1/${base}^${k}`;
-      }
-      const value = Math.pow(base, net);
-      const numeric = String(value);
-
-      return {
-        prompt: promptPretty,
-        answer: answerStr,
-        acceptableAnswers: [answerStr, numeric, answerStr.replace(/\^/g,"**")],
-      };
-    }
-
-
-
     case "powers_mixed": {
-      const base = pick([2,4,8]);
+      const base = pick([2, 4, 8]);
       const expLimits = { 2: 10, 4: 6, 8: 4 };
       const e = randInt(0, expLimits[base]);
       const val = Math.pow(base, e);
@@ -1409,11 +1521,11 @@ function genQuestion(topic) {
 
 
     case "metric_convert": {
-    // Choose dimension and prefixes
+      // Choose dimension and prefixes
       const dim = pick([
-        { base: "m", name: "length", prefixes: ["µ","m","c","", "k"] },  // micro, milli, centi, (base), kilo
-        { base: "g", name: "mass",   prefixes: ["µ","m","", "k"] },      // centi-gram is uncommon, omit
-        { base: "s", name: "time",   prefixes: ["", "m", "k"] }          // base seconds, milli, kilo (rare but fine)
+        { base: "m", name: "length", prefixes: ["µ", "m", "c", "", "k"] },  // micro, milli, centi, (base), kilo
+        { base: "g", name: "mass", prefixes: ["µ", "m", "", "k"] },      // centi-gram is uncommon, omit
+        { base: "s", name: "time", prefixes: ["", "m", "k"] }          // base seconds, milli, kilo (rare but fine)
       ]);
 
       // Map prefix to factor vs base
@@ -1422,12 +1534,12 @@ function genQuestion(topic) {
       }[p]);
 
       const fromP = pick(dim.prefixes);
-      const toP   = pick(dim.prefixes.filter(p => p !== fromP));
+      const toP = pick(dim.prefixes.filter(p => p !== fromP));
 
       // value (avoid too many decimals when converting)
       const v = randInt(1, 5000);
-      const fromUnit = `${fromP}${dim.base}`.replace(/^µ/,"µ");
-      const toUnit   = `${toP}${dim.base}`.replace(/^µ/,"µ");
+      const fromUnit = `${fromP}${dim.base}`.replace(/^µ/, "µ");
+      const toUnit = `${toP}${dim.base}`.replace(/^µ/, "µ");
 
       const valInBase = v * factor(fromP);
       const conv = valInBase / factor(toP);
@@ -1566,19 +1678,21 @@ function genQuestion(topic) {
 
 
 
-    case "mul_of_5": 
-    { const a = pick([5, 15, 25]); 
-      let b;
-      if (a===5){b = randInt(11, 45);}
-      else{
-        b = randInt(1, 16);
+    case "mul_of_5":
+      {
+        const a = pick([5, 15, 25]);
+        let b;
+        if (a === 5) { b = randInt(11, 45); }
+        else {
+          b = randInt(1, 16);
+        }
+        return { prompt: `${a} × ${b}`, answer: String(a * b) };
       }
-      return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
 
     case "mental_div": { const b = randInt(2, 12); const a = b * randInt(2, 50); return { prompt: `${a} ÷ ${b}`, answer: String(Math.floor(a / b)) }; }
     case "squares": { const a = randInt(2, 35); return { prompt: `${a}²`, answer: String(a * a) }; }
     case "cubes": { const a = randInt(2, 15); return { prompt: `${a}³`, answer: String(a * a * a) }; }
-    case "quadratics_eval": { const a = randInt(1, 5), b = randInt(-5, 5), c = randInt(-5, 5), x = randInt(-5, 5); const val = a * x * x + b * x + c; return { prompt: `Evaluate: ${a}x² ${b>=0?"+":"-"} ${Math.abs(b)}x ${c>=0?"+":"-"} ${Math.abs(c)} at x=${x}`.replaceAll("+ -", "- "), answer: String(val) }; }
+    case "quadratics_eval": { const a = randInt(1, 5), b = randInt(-5, 5), c = randInt(-5, 5), x = randInt(-5, 5); const val = a * x * x + b * x + c; return { prompt: `Evaluate: ${a}x² ${b >= 0 ? "+" : "-"} ${Math.abs(b)}x ${c >= 0 ? "+" : "-"} ${Math.abs(c)} at x=${x}`.replaceAll("+ -", "- "), answer: String(val) }; }
     case "prime_factorise": {
       // Pick some "nice" numbers that come up in mental maths/ESAT style
       // They’ll be products of small primes, not huge randoms
@@ -1618,11 +1732,11 @@ function genQuestion(topic) {
 
     // Percentages — fairly nice but varied
     case "percent_calc": {
-      const p = pick([4,5,6,7,8,9,10,12,15,18,20,22,25]);
+      const p = pick([4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 20, 22, 25]);
       let base = randInt(40, 600);
       base = Math.round(base / 5) * 5;
-      const value = (p/100) * base;
-      return { prompt: `${p}% of ${base}`, answer: String(Math.round(value*1000)/1000) };
+      const value = (p / 100) * base;
+      return { prompt: `${p}% of ${base}`, answer: String(Math.round(value * 1000) / 1000) };
     }
 
     // Algebra
@@ -1667,7 +1781,7 @@ function genQuestion(topic) {
 
 
 
-    case "inequalities": { const a = pick([2,3,4,5,-2,-3]); const b = randInt(-10, 10); const c = randInt(-10, 10); let bound = (c - b) / a; const dir = a > 0 ? "<" : ">"; const fmt = (n)=> Number.isInteger(n)? `${n}` : n.toFixed(2); return { prompt: `Solve: ${a}x ${b>=0?"+":"-"} ${Math.abs(b)} ${"<"} ${c}`.replace("<", dir), answer: `x ${dir} ${fmt(bound)}` }; }
+    case "inequalities": { const a = pick([2, 3, 4, 5, -2, -3]); const b = randInt(-10, 10); const c = randInt(-10, 10); let bound = (c - b) / a; const dir = a > 0 ? "<" : ">"; const fmt = (n) => Number.isInteger(n) ? `${n}` : n.toFixed(2); return { prompt: `Solve: ${a}x ${b >= 0 ? "+" : "-"} ${Math.abs(b)} ${"<"} ${c}`.replace("<", dir), answer: `x ${dir} ${fmt(bound)}` }; }
     case "binomial_expand": {
       // a can be positive or negative; bias to non-zero
       const Aabs = randInt(1, 6);
@@ -1711,20 +1825,20 @@ function genQuestion(topic) {
       };
     }
 
-    
+
     // Equations
     case "suvat_solve": {
-      const eq = pick(["s=ut+0.5at^2","v=u+at","v^2=u^2+2as"]);
+      const eq = pick(["s=ut+0.5at^2", "v=u+at", "v^2=u^2+2as"]);
       const u = randInt(-5, 15); const a = randInt(-4, 6); const t = randInt(1, 8);
-      const s = Math.round((u*t + 0.5*a*t*t)*100)/100; const v = Math.round((u + a*t)*100)/100;
-      const pickVar = pick(eq === "v^2=u^2+2as" ? ["v","u","a","s"] : ["s","u","v","a","t"]);
+      const s = Math.round((u * t + 0.5 * a * t * t) * 100) / 100; const v = Math.round((u + a * t) * 100) / 100;
+      const pickVar = pick(eq === "v^2=u^2+2as" ? ["v", "u", "a", "s"] : ["s", "u", "v", "a", "t"]);
       const known = { u, a, t, s, v };
-      const prompt = `Eqn: ${eq}. Find ${pickVar}. Known: ${Object.entries(known).filter(([k])=>k!==pickVar).map(([k,v])=>`${k}=${v}`).join(", ")}`;
+      const prompt = `Eqn: ${eq}. Find ${pickVar}. Known: ${Object.entries(known).filter(([k]) => k !== pickVar).map(([k, v]) => `${k}=${v}`).join(", ")}`;
       let ans;
-      if (eq === "v=u+at") { if (pickVar === "v") ans = v; if (pickVar === "u") ans = v - a*t; if (pickVar === "a") ans = (v - u)/t; if (pickVar === "t") ans = (v - u)/a; }
-      else if (eq === "s=ut+0.5at^2") { if (pickVar === "s") ans = s; if (pickVar === "u") ans = (s - 0.5*a*t*t)/t; if (pickVar === "a") ans = (2*(s - u*t)) / (t*t); if (pickVar === "t") ans = t; }
-      else { if (pickVar === "v") ans = Math.sign(u + a) * Math.sqrt(Math.max(0, u*u + 2*a*s)); if (pickVar === "u") ans = Math.sqrt(Math.max(0, v*v - 2*a*s)); if (pickVar === "a") ans = (v*v - u*u) / (2*s || 1); if (pickVar === "s") ans = (v*v - u*u) / (2*a || 1); }
-      const answer = Number.isFinite(ans) ? String(Math.round(ans*100)/100) : ""; return { prompt, answer };
+      if (eq === "v=u+at") { if (pickVar === "v") ans = v; if (pickVar === "u") ans = v - a * t; if (pickVar === "a") ans = (v - u) / t; if (pickVar === "t") ans = (v - u) / a; }
+      else if (eq === "s=ut+0.5at^2") { if (pickVar === "s") ans = s; if (pickVar === "u") ans = (s - 0.5 * a * t * t) / t; if (pickVar === "a") ans = (2 * (s - u * t)) / (t * t); if (pickVar === "t") ans = t; }
+      else { if (pickVar === "v") ans = Math.sign(u + a) * Math.sqrt(Math.max(0, u * u + 2 * a * s)); if (pickVar === "u") ans = Math.sqrt(Math.max(0, v * v - 2 * a * s)); if (pickVar === "a") ans = (v * v - u * u) / (2 * s || 1); if (pickVar === "s") ans = (v * v - u * u) / (2 * a || 1); }
+      const answer = Number.isFinite(ans) ? String(Math.round(ans * 100) / 100) : ""; return { prompt, answer };
     }
     case "speed_basic": {
       // two modes: numeric (compute value) or formula recall (type s/t, v*t, s/v)
@@ -1934,14 +2048,14 @@ function genQuestion(topic) {
     }
 
 
-    case "units_convert": { const mode = pick(["k2m","m2k"]); if (mode==="k2m") { const v = randInt(10, 120); const ms = Math.round((v * 1000/3600)*100)/100; return { prompt: `Convert ${v} km/h to m/s`, answer: String(ms) }; } else { const v = randInt(3, 40); const k = Math.round((v * 3.6)*100)/100; return { prompt: `Convert ${v} m/s to km/h`, answer: String(k) }; } }
+    case "units_convert": { const mode = pick(["k2m", "m2k"]); if (mode === "k2m") { const v = randInt(10, 120); const ms = Math.round((v * 1000 / 3600) * 100) / 100; return { prompt: `Convert ${v} km/h to m/s`, answer: String(ms) }; } else { const v = randInt(3, 40); const k = Math.round((v * 3.6) * 100) / 100; return { prompt: `Convert ${v} m/s to km/h`, answer: String(k) }; } }
 
     // Formulae (answers to 2 d.p.)
-    case "sphere_volume": { const r = randInt(1, 12); const val = (4/3)*Math.PI*r**3; return { prompt: `Volume of sphere, r=${r}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
-    case "sphere_area": { const r = randInt(1, 15); const val = 4*Math.PI*r**2; return { prompt: `Surface area of sphere, r=${r}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
-    case "cylinder_sa": { const r = randInt(1, 12), h = randInt(1, 20); const val = 2*Math.PI*r*(h + r); return { prompt: `Surface area of closed cylinder, r=${r}, h=${h}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
-    case "cone_sa": { const r = randInt(1, 15), l = randInt(r+1, r+15); const val = Math.PI*r*(r + l); return { prompt: `Surface area of cone, r=${r}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
-    case "square_pyramid_sa": { const a = randInt(2, 20), l = randInt(2, 25); const val = a*a + 2*a*l; return { prompt: `Surface area of square pyramid, base a=${a}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val*100)/100).toFixed(2) }; }
+    case "sphere_volume": { const r = randInt(1, 12); const val = (4 / 3) * Math.PI * r ** 3; return { prompt: `Volume of sphere, r=${r}. Give 2 d.p.`, answer: (Math.round(val * 100) / 100).toFixed(2) }; }
+    case "sphere_area": { const r = randInt(1, 15); const val = 4 * Math.PI * r ** 2; return { prompt: `Surface area of sphere, r=${r}. Give 2 d.p.`, answer: (Math.round(val * 100) / 100).toFixed(2) }; }
+    case "cylinder_sa": { const r = randInt(1, 12), h = randInt(1, 20); const val = 2 * Math.PI * r * (h + r); return { prompt: `Surface area of closed cylinder, r=${r}, h=${h}. Give 2 d.p.`, answer: (Math.round(val * 100) / 100).toFixed(2) }; }
+    case "cone_sa": { const r = randInt(1, 15), l = randInt(r + 1, r + 15); const val = Math.PI * r * (r + l); return { prompt: `Surface area of cone, r=${r}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val * 100) / 100).toFixed(2) }; }
+    case "square_pyramid_sa": { const a = randInt(2, 20), l = randInt(2, 25); const val = a * a + 2 * a * l; return { prompt: `Surface area of square pyramid, base a=${a}, slant l=${l}. Give 2 d.p.`, answer: (Math.round(val * 100) / 100).toFixed(2) }; }
     case "common_multiples": {
       // allowed ranges
       const twod = [12, 13, 14, 15, 16, 17, 18, 19];
@@ -2073,6 +2187,379 @@ function genQuestion(topic) {
       }
     }
 
+    case "wave_basic": {
+      console.log("sucess")
+      // 80% numeric, 20% formula recall
+      const mode = Math.random() < 0.8 ? "numeric" : "formula";
+
+      // helpers
+      const niceNum = (n) => {
+        const r = Math.round(n * 1e9) / 1e9; // keep plenty of precision, trim zeros
+        if (r === 0) return "0";
+        // print as integer or up to 3 decimals if small-ish; else scientific
+        if (Math.abs(r) >= 1e5 || Math.abs(r) < 1e-3) {
+          // scientific a*10^b with a in [1,10)
+          const b = Math.floor(Math.log10(Math.abs(r)));
+          const a = r / Math.pow(10, b);
+          const aRound = Math.round(a * 1000) / 1000;
+          return `${aRound}*10^${b}`;
+        }
+        const inty = Math.round(r);
+        return Math.abs(r - inty) < 1e-9 ? String(inty) : String(Math.round(r * 1000) / 1000);
+      };
+      const numFromSci = (s) => {
+        if (s == null) return NaN;
+        const raw = String(s).trim();
+        if (!raw) return NaN;
+
+        // a*10^b forms
+        const pow = raw.replace(/\s+/g, "");
+        const mPow = pow.match(/^([+-]?\d+(?:\.\d+)?)\s*[*x×]\s*10\^([+-]?\d+)$/i);
+        if (mPow) {
+          const a = parseFloat(mPow[1]);
+          const b = parseInt(mPow[2], 10);
+          return a * Math.pow(10, b);
+        }
+        // plain "3e8"
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : NaN;
+      };
+      const numericEqual = (user, target) => {
+        const u = numFromSci(user);
+        const t = Number(target);
+        if (!Number.isFinite(u) || !Number.isFinite(t)) return false;
+        const absOk = Math.abs(u - t) < 1e-9;
+        const relOk = Math.abs(u - t) / Math.max(1, Math.abs(t)) < 1e-9;
+        return absOk || relOk;
+      };
+
+      if (mode === "formula") {
+        const ask = (Math.random() < 0.34) ? "v" : (Math.random() < 0.5 ? "f" : "lambda");
+        let prompt, expectedSet;
+        if (ask === "v") {
+          prompt = "Wave equation: v = ?";
+          expectedSet = new Set(["fλ", "f*λ", "λ*f", "f*lambda", "lambda*f"]);
+        } else if (ask === "f") {
+          prompt = "Wave equation: f = ?";
+          expectedSet = new Set(["v/λ", "v/lambda"]);
+        } else {
+          prompt = "Wave equation: λ = ?";
+          expectedSet = new Set(["v/f"]);
+        }
+        const checker = (user) => {
+          const u = String(user || "").toLowerCase().replace(/\s+/g, "");
+          return expectedSet.has(u);
+        };
+        const answer =
+          [...expectedSet][0] === "fλ" ? "f·λ" :
+            [...expectedSet][0] === "v/λ" ? "v/λ" : "v/f";
+        return { prompt, answer, checker };
+      }
+
+      // ---------- numeric mode ----------
+      // pick environment
+      const env = Math.random() < 0.6 ? "light" : "sound"; // more light cases
+      let v, f, lambda; // (λ)
+
+      if (env === "light") {
+        // v ≈ 3e8 m/s
+        v = 3e8;
+
+        // choose either nice f or λ so the other is nice too
+        if (Math.random() < 0.5) {
+          // pick frequency so λ is neat
+          const fChoices = [
+            1e6, 2e6, 5e6,
+            1e7, 2e7, 5e7,
+            1e8, 2e8, 5e8,
+            1e9
+          ];
+          f = fChoices[Math.floor(Math.random() * fChoices.length)];
+          lambda = v / f; // in meters
+        } else {
+          // pick wavelength so f is neat
+          const lambdaChoices = [0.5, 1, 2, 5, 10, 0.25, 0.1];
+          lambda = lambdaChoices[Math.floor(Math.random() * lambdaChoices.length)];
+          f = v / lambda;
+        }
+      } else {
+        // sound in air ≈ 340 m/s (pick values that divide nicely)
+        v = 340;
+        const t = Math.random() < 0.5 ? "freq" : "wave";
+        if (t === "freq") {
+          const fChoices = [85, 170, 340, 425, 680]; // gives nice λ
+          f = fChoices[Math.floor(Math.random() * fChoices.length)];
+          lambda = v / f;
+        } else {
+          const lambdaChoices = [0.5, 0.85, 1, 2, 4]; // gives nice f
+          lambda = lambdaChoices[Math.floor(Math.random() * lambdaChoices.length)];
+          f = v / lambda;
+        }
+      }
+
+      const target = (Math.random() < 0.34) ? "v" : (Math.random() < 0.5 ? "f" : "lambda");
+
+      let prompt, answer, checker;
+      if (target === "v") {
+        prompt = `Wave equation: If f = ${niceNum(f)} Hz and λ = ${niceNum(lambda)} m, what is v (m/s)?`;
+        answer = niceNum(f * lambda);
+        checker = (u) => numericEqual(u, f * lambda);
+      } else if (target === "f") {
+        prompt = `Wave equation: If v = ${niceNum(v)} m/s and λ = ${niceNum(lambda)} m, what is f (Hz)?`;
+        answer = niceNum(v / lambda);
+        checker = (u) => numericEqual(u, v / lambda);
+      } else {
+        prompt = `Wave equation: If v = ${niceNum(v)} m/s and f = ${niceNum(f)} Hz, what is λ (m)?`;
+        answer = niceNum(v / f);
+        checker = (u) => numericEqual(u, v / f);
+      }
+
+      return { prompt, answer, checker };
+    }
+
+    case "ohms_law_basic": {
+      // 75% numeric, 25% formula recall
+      const mode = Math.random() < 0.75 ? "numeric" : "formula";
+
+      // small helpers
+      const niceNum = (n) => {
+        const r = Math.round(n * 1000) / 1000;
+        return Math.abs(r - Math.round(r)) < 1e-9
+          ? String(Math.round(r))
+          : String(r);
+      };
+      const numFromSci = (s) => {
+        if (s == null) return NaN;
+        const raw = String(s).trim();
+        if (!raw) return NaN;
+
+        // 3*10^8, 3×10^8, 3x10^8 → scientific
+        const mPow = raw.replace(/\s+/g, "").match(/^([+-]?\d+(?:\.\d+)?)\s*[*x×]\s*10\^([+-]?\d+)$/i);
+        if (mPow) {
+          const a = parseFloat(mPow[1]);
+          const b = parseInt(mPow[2], 10);
+          return a * Math.pow(10, b);
+        }
+        // plain "3e8" or "3E8"
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : NaN;
+      };
+      const numericEqual = (user, target) => {
+        const u = numFromSci(user);
+        const t = Number(target);
+        return Number.isFinite(u) && Number.isFinite(t) && Math.abs(u - t) < 1e-9;
+      };
+
+      if (mode === "formula") {
+        // ask which formula rearrangement matches
+        const target = (Math.random() < 0.33) ? "V" : (Math.random() < 0.5 ? "I" : "R");
+        let prompt, expectedSet;
+        if (target === "V") {
+          prompt = "Ohm’s law: V = ?";
+          expectedSet = new Set(["ir", "i*r", "r*i"]);
+        } else if (target === "I") {
+          prompt = "Ohm’s law: I = ?";
+          expectedSet = new Set(["v/r"]);
+        } else {
+          prompt = "Ohm’s law: R = ?";
+          expectedSet = new Set(["v/i"]);
+        }
+        const checker = (user) => {
+          const u = String(user || "").toLowerCase().replace(/\s+/g, "");
+          return expectedSet.has(u);
+        };
+        const answer =
+          [...expectedSet][0] === "ir" ? "I*R" :
+            [...expectedSet][0] === "v/r" ? "V/R" : "V/I";
+        return { prompt, answer, checker };
+      }
+
+      // ---------- numeric mode ----------
+      // build realistic I (A) and R (Ω) so answers are nice
+      const I_choices = [0.2, 0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5];
+      const R_choices = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 30, 40, 50];
+
+      const I = I_choices[Math.floor(Math.random() * I_choices.length)];
+      const R = R_choices[Math.floor(Math.random() * R_choices.length)];
+      const V = I * R;
+
+      const target = (Math.random() < 0.34) ? "V" : (Math.random() < 0.5 ? "I" : "R");
+
+      let prompt, answer, checker;
+      if (target === "V") {
+        prompt = `Ohm’s law: If I = ${niceNum(I)} A and R = ${niceNum(R)} Ω, what is V (in volts)?`;
+        answer = niceNum(V);
+        checker = (u) => numericEqual(u, V);
+      } else if (target === "I") {
+        // ensure V makes I nice: use V we computed
+        prompt = `Ohm’s law: If V = ${niceNum(V)} V and R = ${niceNum(R)} Ω, what is I (in amperes)?`;
+        answer = niceNum(I);
+        checker = (u) => numericEqual(u, I);
+      } else {
+        prompt = `Ohm’s law: If V = ${niceNum(V)} V and I = ${niceNum(I)} A, what is R (in ohms)?`;
+        answer = niceNum(R);
+        checker = (u) => numericEqual(u, R);
+      }
+
+      return { prompt, answer, checker };
+    }
+    case "two_power_fraction": {
+      // pick an n so exponent is n/2, keep numbers friendly
+      const n = pick([1, 3, 5, 7, 9, 11, 2, 4, 6, 8, 10]); // mix odds/evens
+      const expNum = n, expDen = 2;
+
+      // compute simplified form
+      let coeffInt, hasSqrt2;
+      if (expNum % 2 === 0) {
+        // 2^(2k/2) = 2^k (integer)
+        const k = expNum / 2;
+        coeffInt = 2 ** k;
+        hasSqrt2 = false;
+      } else {
+        // 2^((2k+1)/2) = 2^k * sqrt(2)
+        const k = (expNum - 1) / 2;
+        coeffInt = 2 ** k;
+        hasSqrt2 = true;
+      }
+
+      const prompt = `2^(${expNum}/${expDen})`;
+
+      // canonical display answer (string)
+      const answer = hasSqrt2
+        ? (coeffInt === 1 ? "√2" : `${coeffInt}√2`)
+        : String(coeffInt);
+
+      // helper: parse things like "4√2", "4*sqrt(2)", "sqrt(2)", "4 × sqrt(2)"
+      const parseRootForm = (s) => {
+        const str = String(s ?? "").trim();
+
+        // normalize symbols
+        const norm = str
+          .replace(/×/g, "*")
+          .replace(/\s+/g, "")
+          .replace(/√2/g, "sqrt(2)");
+
+        // integer only
+        if (/^[+-]?\d+$/.test(norm)) {
+          return { value: Number(norm), ok: true };
+        }
+
+        // k*sqrt(2) or sqrt(2)
+        const m = norm.match(/^([+-]?\d+)?\*?sqrt\(2\)$/i);
+        if (m) {
+          const k = m[1] ? Number(m[1]) : 1;
+          if (!Number.isFinite(k)) return { ok: false };
+          return { value: k * Math.SQRT2, ok: true };
+        }
+
+        return { ok: false };
+      };
+
+      const numericAnswer = hasSqrt2 ? coeffInt * Math.SQRT2 : coeffInt;
+
+      const checker = (user) => {
+        const p = parseRootForm(user);
+        if (!p.ok) return false;
+        return Math.abs(p.value - numericAnswer) < 1e-9;
+      };
+
+      // offer a few acceptable text variants
+      const acceptableAnswers = hasSqrt2
+        ? [
+          answer,                              // "4√2" or "√2"
+          answer.replace("√2", "*sqrt(2)"),    // "4*sqrt(2)"
+          answer.replace("√2", "×sqrt(2)"),    // "4×sqrt(2)"
+          coeffInt === 1 ? "sqrt(2)" : `${coeffInt}*sqrt(2)`,
+        ]
+        : [answer];
+
+      // short explanation (optional)
+      const explanation = hasSqrt2
+        ? `2^(${expNum}/${expDen}) = 2^(${Math.floor(expNum / 2)}) · 2^(1/2) = ${coeffInt}·√2.`
+        : `2^(${expNum}/${expDen}) = 2^(${expNum / 2}) = ${coeffInt}.`;
+
+      return { prompt, answer, acceptableAnswers, checker, explanation };
+    }
+
+
+    case "common_multiples_reverse": {
+      // base sets (same as your common_multiples)
+      const twod = [12, 13, 14, 15, 16, 17, 18, 19];
+      const oned = [3, 4, 5, 6, 7, 8, 9];
+
+      // generate one canonical product (avoid 19×9)
+      let a, b;
+      do {
+        a = pick(twod);
+        b = pick(oned);
+      } while (a === 19 && b === 9);
+
+      const N = a * b;
+
+      // gather other pleasant factorizations to suggest (not required to be in the same sets)
+      const suggestions = [];
+      // 1) other two-digit × one-digit from our pools that hit N
+      for (const A of twod) {
+        for (const B of oned) {
+          if (A === a && B === b) continue;
+          if (A * B === N) suggestions.push(`${A} × ${B}`);
+        }
+      }
+      // 2) perfect square form like 12×12 if applicable
+      const r = Math.floor(Math.sqrt(N));
+      if (r * r === N) {
+        const sq = `${r} × ${r}`;
+        if (!suggestions.includes(sq) && !(r === a && r === b)) suggestions.push(sq);
+      }
+      // 3) a couple of other clean factor pairs (limit to avoid overwhelming)
+      for (let d = 2; d <= Math.min(N, 99); d++) {
+        if (N % d !== 0) continue;
+        const q = N / d;
+        if (q < 2 || q > 999) continue;
+        const pair = `${d} × ${q}`;
+        if (!suggestions.includes(pair) && !(d === a && q === b)) {
+          suggestions.push(pair);
+        }
+        if (suggestions.length > 6) break;
+      }
+
+      const prompt = `? × ? = ${N}`;
+
+      const parsePair = (s) => {
+        const m = String(s ?? "")
+          .replace(/x/gi, "×")
+          .replace(/\*/g, "×")
+          .match(/^\s*([+-]?\d+)\s*×\s*([+-]?\d+)\s*$/);
+        if (!m) return null;
+        const m1 = parseInt(m[1], 10), m2 = parseInt(m[2], 10);
+        if (!Number.isFinite(m1) || !Number.isFinite(m2)) return null;
+        return [m1, m2];
+      };
+
+      const ans = String(N); // for consistency
+
+      const checker = (user) => {
+        const pair = parsePair(user);
+        if (!pair) return false;
+        const [m1, m2] = pair;
+        return m1 * m2 === N;
+      };
+
+      // helpful explanation if they’re correct (will show when you reveal)
+      const explanation =
+        suggestions.length
+          ? `Other correct factorizations include: ${suggestions.slice(0, 6).join(", ")}.`
+          : undefined;
+
+      // include a few canonical acceptable strings (optional)
+      const acceptableAnswers = [
+        `${a} × ${b}`,
+        `${b} × ${a}`,
+        ...(r * r === N ? [`${r} × ${r}`] : []),
+      ];
+
+      return { prompt, answer: ans, acceptableAnswers, checker, explanation };
+    }
 
     // Trig
     case "trig_recall_basic": {
@@ -2113,9 +2600,9 @@ function genQuestion(topic) {
         return { prompt: `${f}(${A.txt})`, answer, acceptableAnswers, checker };
       }
     }
-// =======================
-// EXTENDED: includes angles around full circle (e.g., 7π/4, 5π/4, ...)
-// =======================
+    // =======================
+    // EXTENDED: includes angles around full circle (e.g., 7π/4, 5π/4, ...)
+    // =======================
     case "trig_recall_extended": {
       const mode = pick(["deg", "rad"]);
 
@@ -2197,7 +2684,7 @@ function genQuestion(topic) {
       }
     }
 
-    case "trig_eval": { const triples = [[3,4,5],[5,12,13],[8,15,17]]; const [a,b,c] = pick(triples); const which = pick(["sin","cos","tan"]); const answers = { sin: `${a}/${c}`, cos: `${b}/${c}`, tan: `${a}/${b}` }; return { prompt: `Right △ with sides ${a}-${b}-${c}. Compute ${which}(θ) for angle opposite ${a}.`, answer: answers[which] }; }
+    case "trig_eval": { const triples = [[3, 4, 5], [5, 12, 13], [8, 15, 17]]; const [a, b, c] = pick(triples); const which = pick(["sin", "cos", "tan"]); const answers = { sin: `${a}/${c}`, cos: `${b}/${c}`, tan: `${a}/${b}` }; return { prompt: `Right △ with sides ${a}-${b}-${c}. Compute ${which}(θ) for angle opposite ${a}.`, answer: answers[which] }; }
 
     default: return { prompt: "Coming soon", answer: "" };
   }
@@ -2205,11 +2692,11 @@ function genQuestion(topic) {
 
 // ---------- Scoring ----------
 function computeScore({ correct, attempts, durationSec }) {
-  const accuracy = attempts ? (correct+1) / (attempts+2) : 0;
+  const accuracy = attempts ? (correct + 1) / (attempts + 2) : 0;
 
   const rate = durationSec > 0 ? correct / durationSec : 0;
 
-  const targetRate = 0.67; 
+  const targetRate = 0.67;
   const speedNorm = Math.min(1, rate / targetRate);
 
   const score = Math.round(
@@ -2220,10 +2707,10 @@ function computeScore({ correct, attempts, durationSec }) {
 
 
 // ---------- App ----------
-export default function App(){
+export default function App() {
   console.log("VITE_SUPABASE_URL =", import.meta.env.VITE_SUPABASE_URL);
-  console.log("VITE_SUPABASE_ANON_KEY =", import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0,8) + "…");
-  const { user, loading } = useAuth(); 
+  console.log("VITE_SUPABASE_ANON_KEY =", import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0, 8) + "…");
+  const { user, loading } = useAuth();
   const [authBusy, setAuthBusy] = useState(false);
   const [view, setView] = useState("builder");
 
@@ -2252,7 +2739,7 @@ export default function App(){
     })();
   }, [user?.id]);
 
-    useEffect(() => {
+  useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (data.user) {
@@ -2274,59 +2761,59 @@ export default function App(){
   const [board, setBoard] = useLeaderboard();
   const [lastEntryId, setLastEntryId] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
-  const topicMap = useMemo(()=>{ const m = new Map(); Object.entries(CATEGORIES).forEach(([,items])=>items.forEach(it=>m.set(it.id,it))); return m; },[]);
-  const hasOnlyFlash = useMemo(()=> folderTopics.length===1 && folderTopics[0]==="flash_timer", [folderTopics]);
-  const canStart = useMemo(()=> folderTopics.length>0 && !hasOnlyFlash && (!folderTopics.includes("flash_timer") || flashSeconds>0), [folderTopics, hasOnlyFlash, flashSeconds]);
+  const topicMap = useMemo(() => { const m = new Map(); Object.entries(CATEGORIES).forEach(([, items]) => items.forEach(it => m.set(it.id, it))); return m; }, []);
+  const hasOnlyFlash = useMemo(() => folderTopics.length === 1 && folderTopics[0] === "flash_timer", [folderTopics]);
+  const canStart = useMemo(() => folderTopics.length > 0 && !hasOnlyFlash && (!folderTopics.includes("flash_timer") || flashSeconds > 0), [folderTopics, hasOnlyFlash, flashSeconds]);
 
-  function onDragEnd(e){
+  function onDragEnd(e) {
     const { over, active } = e;
     setActiveId(null);
     if (!over || over.id !== "SESSION_FOLDER") return;
     const dropId = String(active.id).startsWith("src-") ? String(active.id).slice(4) : String(active.id);
     setFolderTopics(prev => (prev.includes(dropId) ? prev : [...prev, dropId]));
   }
-  function onDragStart(e){ setActiveId(e.active.id); }
+  function onDragStart(e) { setActiveId(e.active.id); }
 
-function saveSession(name){
-  if (!name) return;
-  const compact = Array.from(new Set(folderTopics));
-  const entry = {
-    name,
-    topics: compact,
-    ...(compact.includes("flash_timer") ? { flashSeconds: Number(flashSeconds) || 0 } : {})
-  };
+  function saveSession(name) {
+    if (!name) return;
+    const compact = Array.from(new Set(folderTopics));
+    const entry = {
+      name,
+      topics: compact,
+      ...(compact.includes("flash_timer") ? { flashSeconds: Number(flashSeconds) || 0 } : {})
+    };
 
-  // local (keep)
-  setSessions(prev => [entry, ...prev].slice(0, 24));
+    // local (keep)
+    setSessions(prev => [entry, ...prev].slice(0, 24));
 
-  // cloud (if logged in)
-  supabase.auth.getUser().then(async ({ data }) => {
-    if (!data.user) return;
-    try {
-      await supabase.from("profiles").upsert({
-      user_id: data.user.id,
-      display_name: name,
-      updated_at: new Date().toISOString()
+    // cloud (if logged in)
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      try {
+        await supabase.from("profiles").upsert({
+          user_id: data.user.id,
+          display_name: name,
+          updated_at: new Date().toISOString()
+        });
+        await createPreset({
+          name: entry.name,
+          topics: entry.topics,
+          flashSeconds: entry.flashSeconds
+        });
+      } catch (e) {
+        console.error("Preset save failed:", e);
+      }
     });
-      await createPreset({
-        name: entry.name,
-        topics: entry.topics,
-        flashSeconds: entry.flashSeconds
-      });
-    } catch (e) {
-      console.error("Preset save failed:", e);
-    }
-  });
-}
+  }
 
-  function loadPreset(p){ setFolderTopics([...p.topics]); }
-  function loadSession(s){
+  function loadPreset(p) { setFolderTopics([...p.topics]); }
+  function loadSession(s) {
     setFolderTopics([...s.topics]);
     // backward compatible: older saves won’t have flashSeconds
     setFlashSeconds(typeof s.flashSeconds === "number" ? s.flashSeconds : 0);
   }
   return (
-    <div className="min-h-screen w-full bg-[#0e0f13] text-white antialiased overflow-x-hidden" style={{fontFamily:"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, 'SF Pro', 'Helvetica Neue', Arial"}}>
+    <div className="min-h-screen w-full bg-[#0e0f13] text-white antialiased overflow-x-hidden" style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, 'SF Pro', 'Helvetica Neue', Arial" }}>
       <div className="sticky top-0 z-40 border-b border-white/5 bg-[#0e0f13]/70 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -2420,7 +2907,7 @@ function saveSession(name){
             activeId={activeId} onDragStart={onDragStart} onDragEnd={onDragEnd}
             topicMap={topicMap}
             durationMin={durationMin} setDurationMin={setDurationMin}
-            onStart={()=>setView("quiz")}
+            onStart={() => setView("quiz")}
             saveSession={saveSession} sessions={sessions} setSessions={setSessions}
             loadPreset={loadPreset} loadSession={loadSession}
             board={board} setBoard={setBoard}
@@ -2434,36 +2921,36 @@ function saveSession(name){
             durationMin={durationMin}
             flashSeconds={flashSeconds}
             includesFlash={folderTopics.includes("flash_timer")}
-            onExit={()=>setView("builder")}
-              onFinish={async (entry) => {
-                // local (existing)
-                setBoard(prev => [entry, ...prev].slice(0, 200));
-                setLastEntryId(entry.id);
+            onExit={() => setView("builder")}
+            onFinish={async (entry) => {
+              // local (existing)
+              setBoard(prev => [entry, ...prev].slice(0, 200));
+              setLastEntryId(entry.id);
 
-                // cloud (only if signed in)
-                const { data } = await supabase.auth.getUser();
-                if (data.user) {
-                  try {
-                    await saveSessionEntry(entry); // you can store entry directly as payload
-                    await supabase.from("leaderboard").insert([{
-                      user_id: data.user.id,
-                      score: entry.score,
-                      accuracy: entry.accuracy,
-                      attempts: entry.attempts,
-                      correct: entry.correct,
-                      duration_sec: entry.duration_sec,
-                      topics: entry.topics, // make sure this is an array
-                      created_at: new Date().toISOString()
-                    }]);
+              // cloud (only if signed in)
+              const { data } = await supabase.auth.getUser();
+              if (data.user) {
+                try {
+                  await saveSessionEntry(entry); // you can store entry directly as payload
+                  await supabase.from("leaderboard").insert([{
+                    user_id: data.user.id,
+                    score: entry.score,
+                    accuracy: entry.accuracy,
+                    attempts: entry.attempts,
+                    correct: entry.correct,
+                    duration_sec: entry.duration_sec,
+                    topics: entry.topics, // make sure this is an array
+                    created_at: new Date().toISOString()
+                  }]);
 
-                  } catch (e) {
-                    console.error("Cloud save failed:", e);
-                  }
+                } catch (e) {
+                  console.error("Cloud save failed:", e);
                 }
-              }}
+              }
+            }}
 
-              />
-              
+          />
+
         )}
       </main>
 
@@ -2490,7 +2977,7 @@ function BuilderView({
   loadSession,
   board, setBoard,
   flashSeconds, setFlashSeconds,
-  canStart, hasOnlyFlash, 
+  canStart, hasOnlyFlash,
   lastEntryId
 }) {
 
@@ -2502,13 +2989,13 @@ function BuilderView({
   const [triedStart, setTriedStart] = useState(false);
   const [showStartWarning, setShowStartWarning] = useState(false);
 
-const startBlockReason = !folderTopics.length
-  ? (triedStart ? "Add at least one topic" : "")
-  : hasOnlyFlash
-  ? "Add another topic (Flash Timer can’t be the only one)"
-  : (folderTopics.includes("flash_timer") && !flashSeconds)
-  ? "Set Flash Timer seconds"
-  : "";
+  const startBlockReason = !folderTopics.length
+    ? (triedStart ? "Add at least one topic" : "")
+    : hasOnlyFlash
+      ? "Add another topic (Flash Timer can’t be the only one)"
+      : (folderTopics.includes("flash_timer") && !flashSeconds)
+        ? "Set Flash Timer seconds"
+        : "";
 
   const [durationStr, setDurationStr] = useState(String(durationMin));
 
@@ -2526,11 +3013,11 @@ const startBlockReason = !folderTopics.length
   }
   return (
     <DndContext
-  collisionDetection={pointerWithin}
-  onDragStart={onDragStart}
-  onDragEnd={onDragEnd}
-  autoScroll={{ enabled: true, layoutShiftCompensation: false, interval: 12, acceleration: 1 }}
-  modifiers={[restrictToWindowEdges]}>
+      collisionDetection={pointerWithin}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      autoScroll={{ enabled: true, layoutShiftCompensation: false, interval: 12, acceleration: 1 }}
+      modifiers={[restrictToWindowEdges]}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Left: Topic selector ONLY */}
         <div className="flex flex-col gap-6">
@@ -2552,7 +3039,7 @@ const startBlockReason = !folderTopics.length
               />
             </div>
 
-          {/* Saved Sessions (now part of the Topics panel) */}
+            {/* Saved Sessions (now part of the Topics panel) */}
 
 
             {/* Scrollable content area */}
@@ -2562,12 +3049,12 @@ const startBlockReason = !folderTopics.length
     max-h-[calc(100vh-220px)]
     overflow-y-auto overflow-x-hidden
     scrollbar-stealth"
-    style={{ scrollbarGutter: 'stable both-edges' }}>              
+              style={{ scrollbarGutter: 'stable both-edges' }}>
               {Object.entries(CATEGORIES).map(([cat, items]) => {
                 const list = topicQuery
                   ? items.filter(t =>
-                      t.label.toLowerCase().includes(topicQuery.toLowerCase())
-                    )
+                    t.label.toLowerCase().includes(topicQuery.toLowerCase())
+                  )
                   : items;
 
                 // Hide this category section if there are no matches while searching
@@ -2590,18 +3077,18 @@ const startBlockReason = !folderTopics.length
                       {cat === "TOOLS" ? (
                         <DraggableFlashTimer />
                       ) : (
-                          list.map(t => (
-                            <TopicRow
-                              key={t.id}
-                              id={t.id}
-                              label={t.label}
-                              onAdd={() =>
-                                setFolderTopics(prev =>
-                                  prev.includes(t.id) ? prev : [...prev, t.id]
-                                )
-                              }
-                            />
-                          ))
+                        list.map(t => (
+                          <TopicRow
+                            key={t.id}
+                            id={t.id}
+                            label={t.label}
+                            onAdd={() =>
+                              setFolderTopics(prev =>
+                                prev.includes(t.id) ? prev : [...prev, t.id]
+                              )
+                            }
+                          />
+                        ))
 
                       )}
                     </div>
@@ -2609,9 +3096,9 @@ const startBlockReason = !folderTopics.length
                 );
               })}
             </div>
-                        <div className="my-3 border-t border-white/10" />
+            <div className="my-3 border-t border-white/10" />
 
-                        <div className="mt-4">
+            <div className="mt-4">
               <div className="text-xs uppercase tracking-wider text-white/50 mb-2">
                 Saved Sessions
               </div>
@@ -2627,7 +3114,7 @@ const startBlockReason = !folderTopics.length
                         {s.topics.map(id => topicMap.get(id)?.label || id).join(", ")}
                       </div>
                       <div className="mt-3 flex items-center gap-2">
-                        <button onClick={() => {setTriedStart(true); loadSession(s)}} className={btnGhost}>Load</button>
+                        <button onClick={() => { setTriedStart(true); loadSession(s) }} className={btnGhost}>Load</button>
                         <button
                           onClick={() => {
                             const copy = [...sessions];
@@ -2652,7 +3139,7 @@ const startBlockReason = !folderTopics.length
           <div className="lg:sticky lg:top-20">
             <DroppableFolder id="SESSION_FOLDER">
               <div className="flex items-center gap-2 text-white/80">
-                <FolderOpen size={18}/>
+                <FolderOpen size={18} />
                 <div className="font-semibold">Session Folder</div>
                 <span className="text-xs text-white/50">({folderTopics.length} topics)</span>
               </div>
@@ -2681,14 +3168,14 @@ const startBlockReason = !folderTopics.length
                           key={id}
                           value={flashSeconds}
                           onChange={setFlashSeconds}
-                          onRemove={()=>setFolderTopics(prev=>prev.filter(x=>x!==id))}
+                          onRemove={() => setFolderTopics(prev => prev.filter(x => x !== id))}
                         />
                       ) : (
                         <SortableTopicChip
                           key={id}
                           id={id}
                           label={topicMap.get(id)?.label || id}
-                          onRemove={()=>setFolderTopics(prev=>prev.filter(x=>x!==id))}
+                          onRemove={() => setFolderTopics(prev => prev.filter(x => x !== id))}
                         />
                       )
                     ))}
@@ -2744,7 +3231,7 @@ const startBlockReason = !folderTopics.length
               Flash Timer can't be the only topic. Add at least one CALCULATION topic.
             </div>
           )}
-          {folderTopics.includes("flash_timer") && flashSeconds<=0 && (
+          {folderTopics.includes("flash_timer") && flashSeconds <= 0 && (
             <div className="text-xs text-amber-300/80">
               Enter a flash time (seconds) for Flash Timer to take effect.
             </div>
@@ -2763,18 +3250,18 @@ const startBlockReason = !folderTopics.length
             maxShown={5}
             currentUser={useAuth().user}
           />
-          <SuggestionsPanel /> 
-          </div>
+          <SuggestionsPanel />
+        </div>
       </div>
 
       <DragOverlay>
         {activeId ? (
-          <motion.div initial={{scale:0.95, opacity:0.9}} animate={{scale:1, opacity:1}} className={`${cardBase} px-3 py-2 text-sm`}>
+          <motion.div initial={{ scale: 0.95, opacity: 0.9 }} animate={{ scale: 1, opacity: 1 }} className={`${cardBase} px-3 py-2 text-sm`}>
             {(() => {
-            const raw = String(activeId).startsWith("src-") ? String(activeId).slice(4) : String(activeId);
-            return Object.values(CATEGORIES).flat().find(t => t.id === raw)?.label || raw;
+              const raw = String(activeId).startsWith("src-") ? String(activeId).slice(4) : String(activeId);
+              return Object.values(CATEGORIES).flat().find(t => t.id === raw)?.label || raw;
             })()}
-          
+
           </motion.div>
         ) : null}
       </DragOverlay>
@@ -2783,7 +3270,7 @@ const startBlockReason = !folderTopics.length
 }
 
 
-function PanelGloss(){
+function PanelGloss() {
   return (<>
     <div className="pointer-events-none absolute -top-24 -left-16 h-40 w-72 -rotate-12 bg-gradient-to-b from-white/10 to-transparent blur-2xl" />
     <div className="pointer-events-none absolute -bottom-28 -right-10 h-40 w-72 rotate-12 bg-gradient-to-b from-white/5 to-transparent blur-2xl" />
@@ -2822,7 +3309,7 @@ function Tooltip({ text, children, placement = "top" }) {
 function SuggestionsPanel() {
   return (
     <div className={`${panel} mt-6`}>
-       <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-2">
         <Send size={18} className="text-white/70 relative" />
         <h2 className="text-white/70 font-semibold tracking-tight">Suggestions</h2>
       </div>
@@ -2852,7 +3339,7 @@ function SuggestionsPanel() {
 }
 
 
-function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash, onExit, onFinish }){
+function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash, onExit, onFinish }) {
   function recordCorrect() {
     const dt = (Date.now() - qStart.current) / 1000;
     times.current.push(dt);
@@ -2866,7 +3353,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     const VERT = Math.max(1e-6, lengths?.vertical ?? 1);
 
     // Scale to fit with margins
-    const scale = Math.min((W - 2*MARGIN)/BASE, (H - 2*MARGIN)/VERT);
+    const scale = Math.min((W - 2 * MARGIN) / BASE, (H - 2 * MARGIN) / VERT);
     const basePx = BASE * scale, vertPx = VERT * scale;
 
     // Center the triangle: right angle at A
@@ -2877,27 +3364,27 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     const C = { x: left, y: bottom - vertPx };
 
     // Helpers
-    const mid = (P,Q)=>({x:(P.x+Q.x)/2, y:(P.y+Q.y)/2});
-    const sub = (p,q)=>({x:p.x-q.x, y:p.y-q.y});
-    const len = (v)=>Math.hypot(v.x,v.y) || 1;
-    const norm = (v)=>{ const L=len(v); return {x:v.x/L, y:v.y/L}; };
-    const perp = (v)=>({x:-v.y, y:v.x});
+    const mid = (P, Q) => ({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 });
+    const sub = (p, q) => ({ x: p.x - q.x, y: p.y - q.y });
+    const len = (v) => Math.hypot(v.x, v.y) || 1;
+    const norm = (v) => { const L = len(v); return { x: v.x / L, y: v.y / L }; };
+    const perp = (v) => ({ x: -v.y, y: v.x });
 
     const minSide = Math.min(basePx, vertPx);
     const r = Math.max(10, Math.min(16, 0.18 * minSide));          // right-angle box
-    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W,H)));  // text size
+    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W, H)));  // text size
     const tickLen = Math.max(8, Math.min(14, 0.14 * minSide));     // equality tick
 
     // Angle label inside on bisector
-    function angleLabelInside(vertexKey, text, color="#a0aec0") {
+    function angleLabelInside(vertexKey, text, color = "#a0aec0") {
       let V, U1, U2;
-      if (vertexKey === "A") { V=A; U1=norm(sub(B,A)); U2=norm(sub(C,A)); }
-      else if (vertexKey === "B") { V=B; U1=norm(sub(A,B)); U2=norm(sub(C,B)); }
-      else { V=C; U1=norm(sub(A,C)); U2=norm(sub(B,C)); }
+      if (vertexKey === "A") { V = A; U1 = norm(sub(B, A)); U2 = norm(sub(C, A)); }
+      else if (vertexKey === "B") { V = B; U1 = norm(sub(A, B)); U2 = norm(sub(C, B)); }
+      else { V = C; U1 = norm(sub(A, C)); U2 = norm(sub(B, C)); }
       let bis = { x: U1.x + U2.x, y: U1.y + U2.y };
-      const L = Math.hypot(bis.x,bis.y);
+      const L = Math.hypot(bis.x, bis.y);
       if (L < 1e-6) {
-        const centroid = mid(A, mid(B,C));
+        const centroid = mid(A, mid(B, C));
         const v = sub(centroid, V);
         bis = norm(v);
       } else {
@@ -2913,22 +3400,22 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     }
 
     // Equality tick on an edge
-    function edgeTick(P,Q){
-      const v = sub(Q,P), u = norm(v), n = norm(perp(u));
-      const m = mid(P,Q), t = tickLen/2;
-      const a = { x:m.x - n.x*t, y:m.y - n.y*t };
-      const b = { x:m.x + n.x*t, y:m.y + n.y*t };
+    function edgeTick(P, Q) {
+      const v = sub(Q, P), u = norm(v), n = norm(perp(u));
+      const m = mid(P, Q), t = tickLen / 2;
+      const a = { x: m.x - n.x * t, y: m.y - n.y * t };
+      const b = { x: m.x + n.x * t, y: m.y + n.y * t };
       return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#e5e7eb" strokeWidth="2" />;
     }
 
-    const baseMid = mid(A,B), vertMid = mid(A,C), hypMid = mid(B,C);
+    const baseMid = mid(A, B), vertMid = mid(A, C), hypMid = mid(B, C);
 
     let angleNode = null;
     if (angleHint) {
       const txt = angleHint.startsWith("30") ? "30°"
-                : angleHint.startsWith("60") ? "60°"
-                : angleHint.startsWith("45") ? "45°"
-                : null;
+        : angleHint.startsWith("60") ? "60°"
+          : angleHint.startsWith("45") ? "45°"
+            : null;
       const key = angleHint.slice(-1); // 'A'|'B'|'C'
       if (txt && /[ABC]/.test(key)) angleNode = angleLabelInside(key, txt, "#9ca3af");
     }
@@ -2963,8 +3450,8 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
           {/* Equal-leg ticks for 45-45-90 */}
           {isoRight && (
             <>
-              {edgeTick(A,B)}
-              {edgeTick(A,C)}
+              {edgeTick(A, B)}
+              {edgeTick(A, C)}
             </>
           )}
 
@@ -2993,7 +3480,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     );
   }
 
-// ===== CircleDiagram (replacement) ==========================================
+  // ===== CircleDiagram (replacement) ==========================================
   function CircleDiagram(diagram) {
     const {
       // geometry
@@ -3352,7 +3839,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   }
   useEffect(() => { refillPool(); }, []); // on session start
 
-// run every time current question changes → re-typeset MathJax
+  // run every time current question changes → re-typeset MathJax
   const [lastWasCorrect, setLastWasCorrect] = useState(null);
   function primaryAction() {
     if (state === "finished") return;
@@ -3455,14 +3942,14 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     return () => window.removeEventListener("keydown", onKey);
   }, [showExitConfirm]);
 
-    // Typeset ONLY the prompt node when it changes/ unhides
+  // Typeset ONLY the prompt node when it changes/ unhides
 
 
-  function scheduleFlashHide(topicId){
-    if (!(includesFlash && flashSeconds>0 && isCalc(topicId))) return;
-    const ms = Math.max(0, Math.round(flashSeconds*1000) - 80); // account for fade-in
+  function scheduleFlashHide(topicId) {
+    if (!(includesFlash && flashSeconds > 0 && isCalc(topicId))) return;
+    const ms = Math.max(0, Math.round(flashSeconds * 1000) - 80); // account for fade-in
     clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(()=> setHidden(true), ms);
+    hideTimer.current = setTimeout(() => setHidden(true), ms);
   }
 
   function next() {
@@ -3480,24 +3967,24 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   }
 
 
-  useEffect(()=>{ next(); }, []);
-  useEffect(()=>{ inputRef.current?.focus(); }, [current]);
-  useEffect(()=>()=>clearTimeout(hideTimer.current), []);
+  useEffect(() => { next(); }, []);
+  useEffect(() => { inputRef.current?.focus(); }, [current]);
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
 
   // countdown
-  useEffect(()=>{ const t = setInterval(()=> setTimeLeft(s=>s-1), 1000); return ()=>clearInterval(t); }, []);
-  useEffect(()=>{ if (timeLeft<=0 && state!=="finished") endSession(); }, [timeLeft]);
+  useEffect(() => { const t = setInterval(() => setTimeLeft(s => s - 1), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { if (timeLeft <= 0 && state !== "finished") endSession(); }, [timeLeft]);
 
-  function endSession(){
+  function endSession() {
     setState("finished");
-    const elapsed = Math.max(1, (Date.now() - startedAt.current)/1000);
+    const elapsed = Math.max(1, (Date.now() - startedAt.current) / 1000);
     const correct = correctCount;
     const attemptsTotal = attempts; // or convert to a ref if you want 100% safety
-    const avgSecPerQ = times.current.length ? (times.current.reduce((a,b)=>a+b,0)/times.current.length) : elapsed/Math.max(1,correctCount);
-    const uniqTopicIds = [...new Set(topicIds.filter(t=>t!=="flash_timer"))];
+    const avgSecPerQ = times.current.length ? (times.current.reduce((a, b) => a + b, 0) / times.current.length) : elapsed / Math.max(1, correctCount);
+    const uniqTopicIds = [...new Set(topicIds.filter(t => t !== "flash_timer"))];
     const isMixed = new Set(uniqTopicIds).size > 1;
     const { score, accuracy } = computeScore({ correct, attempts: attemptsTotal, durationSec: elapsed });
-    const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ*100)/100, attempts: attemptsTotal, correct, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin*60), };
+    const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ * 100) / 100, attempts: attemptsTotal, correct, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin * 60), };
     onFinish?.(entry);
   }
 
@@ -3510,7 +3997,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
   }
 
   // --- Symbols inserter --- will suggest based on prompt
-  function insertAtCursor(text){
+  function insertAtCursor(text) {
     const el = inputRef.current; if (!el) return;
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
@@ -3518,11 +4005,11 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
     const after = el.value.slice(end);
     const newVal = before + text + after;
     setAnswer(newVal);
-    requestAnimationFrame(()=>{ el.focus(); const pos = start + text.length; el.setSelectionRange(pos, pos); });
+    requestAnimationFrame(() => { el.focus(); const pos = start + text.length; el.setSelectionRange(pos, pos); });
   }
-  const suggestedSymbols = useMemo(()=>{
+  const suggestedSymbols = useMemo(() => {
     const p = String(current?.prompt ?? "").toLowerCase();
-    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷"];
+    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷", "λ"];
     const need = new Set(base);
     if (p.includes("π") || p.includes("pi")) need.add("π");
     if (p.includes("^") || p.includes("power") || p.includes("²") || p.includes("³")) need.add("^");
@@ -3551,13 +4038,13 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
             <ArrowLeft size={16} />Back
           </button>
           <div className="flex items-center gap-4 text-sm text-white/70">
-            <div className="flex items-center gap-1"><Clock size={16}/><span>{Math.max(0,timeLeft)}s</span></div>
+            <div className="flex items-center gap-1"><Clock size={16} /><span>{Math.max(0, timeLeft)}s</span></div>
             <div>Attempts: {attempts}</div>
           </div>
         </div>
-        
+
         <div className="mt-6 text-center">
-          {state!=="finished" ? (
+          {state !== "finished" ? (
             <>
               <div className="text-xs uppercase tracking-widest text-white/40">{current ? (topicMap.get(current.id)?.label || "") : ""}</div>
               <AnimatePresence mode="wait">
@@ -3592,8 +4079,8 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                   onChange={(e) => setAnswer(beautifyInline(e.target.value))}
                   placeholder="Type answer and hit Enter"
                   className={`w-full max-w-md px-4 py-3 rounded-2xl bg-white/5 border outline-none text-lg ${state === "wrong"
-                      ? "border-red-500/50 focus:border-red-400/60"
-                      : "border-white/10 focus:border-emerald-400/50"
+                    ? "border-red-500/50 focus:border-red-400/60"
+                    : "border-white/10 focus:border-emerald-400/50"
                     }`}
                 />
 
@@ -3625,11 +4112,11 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
                 )}
               </form>
 
-{/* Live MathJax preview under the input */}
+              {/* Live MathJax preview under the input */}
               {/* Symbols toolbar */}
               <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                 {suggestedSymbols.map(sym => (
-                  <button key={sym} type="button" onClick={()=>insertAtCursor(sym)} className="px-2 py-1 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10">
+                  <button key={sym} type="button" onClick={() => insertAtCursor(sym)} className="px-2 py-1 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10">
                     {sym === '√' ? '√' : sym}
                   </button>
                 ))}
@@ -3776,7 +4263,7 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
         </div>
       </div>
     </div>
-    
+
   );
 }
 
@@ -3875,9 +4362,8 @@ function TutorialModal({ open, slides = [], onClose }) {
                     key={idx}
                     onClick={() => setI(idx)}
                     aria-label={`Go to slide ${idx + 1}`}
-                    className={`h-2.5 rounded-full transition-all ${
-                      idx === i ? "w-6 bg-white/90" : "w-2.5 bg-white/30 hover:bg-white/50"
-                    }`}
+                    className={`h-2.5 rounded-full transition-all ${idx === i ? "w-6 bg-white/90" : "w-2.5 bg-white/30 hover:bg-white/50"
+                      }`}
                   />
                 ))}
               </div>
@@ -3905,7 +4391,7 @@ function TutorialModal({ open, slides = [], onClose }) {
   );
 }
 
-function SessionSummary({ onExit }){
+function SessionSummary({ onExit }) {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="
@@ -3913,9 +4399,9 @@ function SessionSummary({ onExit }){
       bg-white/[0.02] text-white/60
       p-6 flex flex-col items-center justify-center gap-2
       transition-colors">
-              <div className="text-sm text-white/60 uppercase tracking-widest">Session Complete</div>
+        <div className="text-sm text-white/60 uppercase tracking-widest">Session Complete</div>
 
-              <div className="text-white/70 text-sm">Saved to leaderboard.</div>
+        <div className="text-white/70 text-sm">Saved to leaderboard.</div>
       </div>
 
       <button onClick={onExit} className={btnPrimary}>Back to Builder</button>
@@ -3940,8 +4426,8 @@ function computeRelative(topic, entry, baseline, weights = { wAcc: 1, wSpeed: 0.
 }
 
 // --- Global baselines across all sessions (your overall "normal") ---
-function computeGlobalBaselines(board){
-  const accs = board.map(entryAccOf).filter(x => Number.isFinite(x) && x>=0 && x<=1);
+function computeGlobalBaselines(board) {
+  const accs = board.map(entryAccOf).filter(x => Number.isFinite(x) && x >= 0 && x <= 1);
   const secs = board.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
 
   // robust centres
@@ -3956,10 +4442,10 @@ function computeGlobalBaselines(board){
 }
 
 // Group entries by topic (same as before)
-function groupByTopic(board){
+function groupByTopic(board) {
   const byTopic = new Map();
-  for (const e of board){
-    for (const t of (e.topics || [])){
+  for (const e of board) {
+    for (const t of (e.topics || [])) {
       if (!byTopic.has(t)) byTopic.set(t, []);
       byTopic.get(t).push(e);
     }
@@ -3976,17 +4462,17 @@ function summarizeTopics(
     winsorK: 3,            // clamp outliers to ±k*MAD
     shrinkKAttempts: 40,   // EB-like shrink by attempt count
   }
-){
+) {
   const { globalAcc, globalSec, accMAD, secMAD } = computeGlobalBaselines(board);
   const byTopic = groupByTopic(board);
 
   const topics = [];
-  for (const [topic, list] of byTopic){
+  for (const [topic, list] of byTopic) {
     const n = list.length;
 
     // raw arrays
-    const rawAccs = list.map(entryAccOf).filter(x => Number.isFinite(x) && x>=0 && x<=1);
-    const rawSecs = list.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x>0);
+    const rawAccs = list.map(entryAccOf).filter(x => Number.isFinite(x) && x >= 0 && x <= 1);
+    const rawSecs = list.map(e => e?.avgSecPerQ).filter(x => Number.isFinite(x) && x > 0);
 
     // anomaly handling (winsorize around robust global centre)
     const accs = winsorizeAround(rawAccs, globalAcc, accMAD, opts.winsorK);
@@ -3995,16 +4481,16 @@ function summarizeTopics(
     // shrink small samples toward global (Laplace-style)
     const topicAccRaw = mean(accs);
     const topicSecRaw = mean(secs);
-    const topicAcc = (topicAccRaw * accs.length + globalAcc * prior) / ((accs.length||0) + prior);
-    const topicSec = (topicSecRaw * secs.length + globalSec * prior) / ((secs.length||0) + prior);
+    const topicAcc = (topicAccRaw * accs.length + globalAcc * prior) / ((accs.length || 0) + prior);
+    const topicSec = (topicSecRaw * secs.length + globalSec * prior) / ((secs.length || 0) + prior);
 
     // reliability / volume
     const attempts = list.reduce((s, e) => s + (e.attempts || 0), 0);
-    const correct  = list.reduce((s, e) => s + (Number.isFinite(e.correct) ? e.correct
-                                         : Math.round((entryAccOf(e)||0)*(e.attempts||0))), 0);
+    const correct = list.reduce((s, e) => s + (Number.isFinite(e.correct) ? e.correct
+      : Math.round((entryAccOf(e) || 0) * (e.attempts || 0))), 0);
     const sessions = n;
-    const relWL    = wilsonLowerBound(correct, attempts);        // 0..1
-    const shrinkA  = attempts / (attempts + opts.shrinkKAttempts); // 0..1
+    const relWL = wilsonLowerBound(correct, attempts);        // 0..1
+    const shrinkA = attempts / (attempts + opts.shrinkKAttempts); // 0..1
 
     // z-scores relative to robust global centre & spread
     const zAcc = accMAD > 0 ? (topicAcc - globalAcc) / accMAD : 0;
@@ -4012,8 +4498,8 @@ function summarizeTopics(
 
     // blended performance signal
     const blendedZ = (weights.wAcc * zAcc + weights.wSpeed * zSpd)
-                   * (0.5 + 0.5 * relWL)   // down-weight low-confidence accuracy
-                   * (0.5 + 0.5 * shrinkA); // down-weight tiny attempt counts
+      * (0.5 + 0.5 * relWL)   // down-weight low-confidence accuracy
+      * (0.5 + 0.5 * shrinkA); // down-weight tiny attempt counts
 
     // map to 1..1000
     const normScore = zToScore01k(clamp(blendedZ, -6, 6)); // cap extreme tails for stability
@@ -4054,7 +4540,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 5
     const to = next;
     const d =
       TABS.indexOf(to) > TABS.indexOf(from) ? 1 :
-      TABS.indexOf(to) < TABS.indexOf(from) ? -1 : 0;
+        TABS.indexOf(to) < TABS.indexOf(from) ? -1 : 0;
     setDir(d);
     setTab(to);
     prevTabRef.current = to;
@@ -4142,8 +4628,8 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 5
 function SectionRailSwitch({ value, onChange }) {
   const options = [
     { key: "personal", label: "Personal", icon: User2 },
-    { key: "global",   label: "Global",   icon: Globe2 },
-    ];
+    { key: "global", label: "Global", icon: Globe2 },
+  ];
   const idx = options.findIndex(o => o.key === value);
   const isGlobal = value === "global";
 
@@ -4153,8 +4639,8 @@ function SectionRailSwitch({ value, onChange }) {
       aria-label="Select leaderboard scope"
       className="relative inline-flex items-center rounded-2xl bg-white/5 border border-white/10 p-1"
       onKeyDown={(e) => {
-        if (e.key === "ArrowRight") onChange(options[Math.min(idx+1, options.length-1)].key);
-        if (e.key === "ArrowLeft")  onChange(options[Math.max(idx-1, 0)].key);
+        if (e.key === "ArrowRight") onChange(options[Math.min(idx + 1, options.length - 1)].key);
+        if (e.key === "ArrowLeft") onChange(options[Math.max(idx - 1, 0)].key);
       }}
     >
       {/* Sliding handle (style changes by target) */}
@@ -4183,8 +4669,8 @@ function SectionRailSwitch({ value, onChange }) {
                         focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/30
                         transition-colors
                         ${active
-                          ? (activeGlobal ? "text-emerald-200" : "text-white")
-                          : "text-white/75 hover:text-white"}`}
+                ? (activeGlobal ? "text-emerald-200" : "text-white")
+                : "text-white/75 hover:text-white"}`}
             onClick={() => onChange(o.key)}
           >
             <ActiveIcon size={16} className={`${activeGlobal ? "text-emerald-300" : "text-white/65"}`} />
@@ -4208,10 +4694,10 @@ function AnalyticsShell({ board, setBoard, topicMap, highlightId, maxShown = 5, 
       <PanelGloss />
 
       {/* Header with rail switch */}
-  {/* Header with rail switch */}
+      {/* Header with rail switch */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-  <Trophy size={18} className="text-white/80" />
+          <Trophy size={18} className="text-white/80" />
           Analytics
         </h2>
         <SectionRailSwitch value={section} onChange={setSection} />
@@ -4259,7 +4745,7 @@ function AnalyticsShell({ board, setBoard, topicMap, highlightId, maxShown = 5, 
 
 
       {/* Body */}
-<div className="relative overflow-visible h-auto min-h-0">
+      <div className="relative overflow-visible h-auto min-h-0">
         <AnimatePresence initial={false} mode="popLayout">
           {section === "performance" ? (
             <motion.div
@@ -4312,7 +4798,7 @@ function PerformanceTabs({ board, topicSummaries, topicMap, sessionsCapped, high
   return (
     <>
       {/* tabs row exactly as you had */}
-  {/* Tabs row + Clear aligned on one line */}
+      {/* Tabs row + Clear aligned on one line */}
       <div className="flex items-center justify-between mb-4 gap-2">
         <div className="flex gap-2">
           {TABS.map(k => (
@@ -4366,8 +4852,8 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
   const { user } = useAuth();
   const n = board.length;
   const avgScore = robustAverageScore(board);
-  const avgAcc   = board.reduce((s,e)=>s+(e.accuracy||0),0)/(n||1);
-  const avgSec   = Math.round(10*board.reduce((s,e)=>s+(e.avgSecPerQ||0),0)/(n||1))/10;
+  const avgAcc = board.reduce((s, e) => s + (e.accuracy || 0), 0) / (n || 1);
+  const avgSec = Math.round(10 * board.reduce((s, e) => s + (e.avgSecPerQ || 0), 0) / (n || 1)) / 10;
 
   // Let all finite RELs compete, then prefer well-sampled items as tie-breaker
   const finite = topicSummaries.filter(t => Number.isFinite(t.weakIndex));
@@ -4395,12 +4881,12 @@ function OverviewTab({ board, topicSummaries, topicMap }) {
           }
           value={<>{avgScore}<span className="text-xs text-white/50"> /1000</span></>}
         />
-        <KPI label="Accuracy" value={`${Math.round(avgAcc*100)}%`} />
+        <KPI label="Accuracy" value={`${Math.round(avgAcc * 100)}%`} />
         <KPI label="Avg sec / Q" value={avgSec} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <TopicList title="Weakest topics"  items={weakest}   topicMap={topicMap} tone="weak" />
+        <TopicList title="Weakest topics" items={weakest} topicMap={topicMap} tone="weak" />
         <TopicList title="Strongest topics" items={strongest} topicMap={topicMap} tone="strong" />
       </div>
     </div>
@@ -4457,7 +4943,7 @@ function MedalBadge({ rank }) {
       title={`Rank ${rank}`}
     >
       <div className="absolute inset-0 rounded-xl mix-blend-soft-light pointer-events-none"
-           style={{ background: "radial-gradient(120% 120% at -10% -10%, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.1) 55%, transparent 60%)" }} />
+        style={{ background: "radial-gradient(120% 120% at -10% -10%, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.1) 55%, transparent 60%)" }} />
       <div className="text-xs font-bold">{rank}</div>
     </div>
   );
@@ -4491,7 +4977,7 @@ function TopicsTab({ topicSummaries, topicMap }) {
         ((Number.isFinite(b.weakIndex) ? b.weakIndex : -Infinity) - (Number.isFinite(a.weakIndex) ? a.weakIndex : -Infinity)) ||
         ((b.attempts || 0) - (a.attempts || 0))
       );
-    if (sort === "recent")    arr.sort((a, b) =>
+    if (sort === "recent") arr.sort((a, b) =>
       (new Date(b.entries?.[0]?.when || 0)) - (new Date(a.entries?.[0]?.when || 0))
     );
     return arr;
@@ -4596,12 +5082,12 @@ function TopicRowBar({ index, label, rel, relPct, sec, attempts, sessions }) {
 // ---- Visual helpers (drop-in) ----\
 function explainDivisibility(N, d) {
   const digits = String(Math.abs(N)).split("").map(Number);
-  const last   = digits[digits.length - 1];
-  const last2  = digits.slice(-2).join("") || "0";
-  const last3  = digits.slice(-3).join("") || "0";
-  const sum    = digits.reduce((s, x) => s + x, 0);
+  const last = digits[digits.length - 1];
+  const last2 = digits.slice(-2).join("") || "0";
+  const last3 = digits.slice(-3).join("") || "0";
+  const sum = digits.reduce((s, x) => s + x, 0);
   const altSum = digits.reduce((s, x, i) => (i % 2 === 0 ? s + x : s - x), 0); // 11-rule
-  const mod    = ((N % d) + d) % d;
+  const mod = ((N % d) + d) % d;
 
   const yesNo = (ok) => ok ? "Yes" : "No";
 
@@ -4640,7 +5126,7 @@ function explainDivisibility(N, d) {
   }
   if (d === 11) {
     const ok = (Math.abs(altSum) % 11) === 0;
-    return `Rule for 11: alternating sum of digits (odd positions − even positions) is a multiple of 11.\nAlt sum = ${altSum} → ${Math.abs(altSum)} ${ (Math.abs(altSum)%11)===0 ? "is" : "is not"} a multiple of 11 → ${yesNo(ok)}.`;
+    return `Rule for 11: alternating sum of digits (odd positions − even positions) is a multiple of 11.\nAlt sum = ${altSum} → ${Math.abs(altSum)} ${(Math.abs(altSum) % 11) === 0 ? "is" : "is not"} a multiple of 11 → ${yesNo(ok)}.`;
   }
   if (d === 7) {
     // Show the common classroom trick once or twice; also report true mod for certainty.
@@ -4653,8 +5139,8 @@ function explainDivisibility(N, d) {
     let s2 = step(Math.abs(s1));
     const ok = mod === 0;
     return `One test for 7: take the last digit, double it, subtract from the rest, repeat.\n` +
-           `${Math.abs(N)} → ${s1} → ${s2} … check small number.\n` +
-           `${N} mod 7 = ${mod} → ${yesNo(ok)}.`;
+      `${Math.abs(N)} → ${s1} → ${s2} … check small number.\n` +
+      `${N} mod 7 = ${mod} → ${yesNo(ok)}.`;
   }
   // Fallback generic (shouldn't be hit with the chosen d set)
   return `Compute ${N} mod ${d} = ${mod} → ${yesNo(mod === 0)}.`;
@@ -4693,13 +5179,13 @@ function scaleAttempts(n) {
 function barColor(pct) {
   const x = Math.max(0, Math.min(100, pct)) / 100;
   // bands: 0–0.4 red→orange, 0.4–0.7 orange→amber, 0.7–0.85 lime→emerald, 0.85–1 emerald→teal
-  const lerp = (a,b,t)=>Math.round(a+(b-a)*t);
-  const pick = (a,b,t)=>`rgb(${lerp(a[0],b[0],t)}, ${lerp(a[1],b[1],t)}, ${lerp(a[2],b[2],t)})`;
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+  const pick = (a, b, t) => `rgb(${lerp(a[0], b[0], t)}, ${lerp(a[1], b[1], t)}, ${lerp(a[2], b[2], t)})`;
 
-  if (x <= 0.4)   return pick([239,68,68],  [249,115,22],  x/0.4);           // red → orange
-  if (x <= 0.7)   return pick([249,115,22],[245,158,11],  (x-0.4)/0.3);      // orange → amber
-  if (x <= 0.85)  return pick([163,230,53],[16,185,129],  (x-0.7)/0.15);     // lime → emerald
-  return                 pick([16,185,129],[20,184,166],  (x-0.85)/0.15);    // emerald → teal
+  if (x <= 0.4) return pick([239, 68, 68], [249, 115, 22], x / 0.4);           // red → orange
+  if (x <= 0.7) return pick([249, 115, 22], [245, 158, 11], (x - 0.4) / 0.3);      // orange → amber
+  if (x <= 0.85) return pick([163, 230, 53], [16, 185, 129], (x - 0.7) / 0.15);     // lime → emerald
+  return pick([16, 185, 129], [20, 184, 166], (x - 0.85) / 0.15);    // emerald → teal
 }
 
 function quartile(sorted, p) {
@@ -4712,9 +5198,9 @@ function quartile(sorted, p) {
 function robustAverageScore(board) {
   const vals = board.map(e => e?.score).filter(v => Number.isFinite(v));
   if (vals.length === 0) return 0;
-  if (vals.length < 5) return Math.round(vals.reduce((s,v)=>s+v,0)/vals.length);
+  if (vals.length < 5) return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
 
-  const sorted = [...vals].sort((a,b) => a - b);
+  const sorted = [...vals].sort((a, b) => a - b);
   const q1 = quartile(sorted, 0.25);
   const q3 = quartile(sorted, 0.75);
   const iqr = q3 - q1;
@@ -4723,7 +5209,7 @@ function robustAverageScore(board) {
 
   const filtered = vals.filter(v => v >= lo && v <= hi);
   const base = filtered.length ? filtered : vals;
-  return Math.round(base.reduce((s,v)=>s+v,0)/base.length);
+  return Math.round(base.reduce((s, v) => s + v, 0) / base.length);
 }
 
 /* ===================== Sessions Tab (ranked list) ===================== */
@@ -4733,9 +5219,9 @@ function SessionsTab({ board, topicMap, highlightId }) {
 
   const ranked = React.useMemo(() => {
     const arr = board.slice();
-    if (sortBy === "attempts") arr.sort((a,b) => (b.attempts||0) - (a.attempts||0));
-    else if (sortBy === "score") arr.sort((a,b) => (b.score||0) - (a.score||0));
-    else if (sortBy === "date")  arr.sort((a,b) => new Date(b.when) - new Date(a.when));
+    if (sortBy === "attempts") arr.sort((a, b) => (b.attempts || 0) - (a.attempts || 0));
+    else if (sortBy === "score") arr.sort((a, b) => (b.score || 0) - (a.score || 0));
+    else if (sortBy === "date") arr.sort((a, b) => new Date(b.when) - new Date(a.when));
     return arr;
   }, [board, sortBy]);
 
@@ -4748,45 +5234,45 @@ function SessionsTab({ board, topicMap, highlightId }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] text-white/45">Sort:</span>
         <button
-          className={`${btnGhost} ${sortBy==="attempts" ? "ring-2 ring-emerald-400/60" : ""}`}
-          onClick={()=>setSortBy("attempts")}
+          className={`${btnGhost} ${sortBy === "attempts" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={() => setSortBy("attempts")}
           title="Most practiced (highest attempts first)"
         >
           Most practiced
         </button>
         <button
-          className={`${btnGhost} ${sortBy==="score" ? "ring-2 ring-emerald-400/60" : ""}`}
-          onClick={()=>setSortBy("score")}
+          className={`${btnGhost} ${sortBy === "score" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={() => setSortBy("score")}
           title="Highest score first"
         >
           Score
         </button>
         <button
-          className={`${btnGhost} ${sortBy==="date" ? "ring-2 ring-emerald-400/60" : ""}`}
-          onClick={()=>setSortBy("date")}
+          className={`${btnGhost} ${sortBy === "date" ? "ring-2 ring-emerald-400/60" : ""}`}
+          onClick={() => setSortBy("date")}
           title="Most recent first"
         >
           Recent
         </button>
       </div>
 
-      {show.length===0 && <div className="text-white/50 text-sm">No entries yet.</div>}
+      {show.length === 0 && <div className="text-white/50 text-sm">No entries yet.</div>}
 
       <div className="grid grid-cols-1 gap-2">
         {show.map((e, idx) => (
           <SessionRow
             key={e.id}
-            rank={idx+1}
+            rank={idx + 1}
             entry={e}
             topicMap={topicMap}
-            highlight={e.id===highlightId}
+            highlight={e.id === highlightId}
           />
         ))}
       </div>
 
       {count < ranked.length && (
         <div className="mt-2">
-          <button className={btnGhost} onClick={()=>setCount(c=>c+20)}>Load more</button>
+          <button className={btnGhost} onClick={() => setCount(c => c + 20)}>Load more</button>
         </div>
       )}
     </div>
@@ -4794,7 +5280,7 @@ function SessionsTab({ board, topicMap, highlightId }) {
 }
 
 
-function SessionRow({ rank, entry, topicMap, highlight=false }) {
+function SessionRow({ rank, entry, topicMap, highlight = false }) {
   const date = new Date(entry.when);
   const topicsLabel = entry.bucket === "MIXED"
     ? entry.topics.map(t => topicMap.get(t)?.label || t).join(" · ")
@@ -4828,7 +5314,7 @@ function SessionRow({ rank, entry, topicMap, highlight=false }) {
         </div>
 
         <div className="text-right text-[10px] sm:text-xs text-white/50">
-          <div>{date.toLocaleDateString()} {date.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
+          <div>{date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
           <div>{entry.correct}✔ / {entry.attempts} tries · {accPct}% · {fmtSec(entry.avgSecPerQ)}</div>
         </div>
       </div>
@@ -4854,7 +5340,7 @@ function SessionRow({ rank, entry, topicMap, highlight=false }) {
 
 
 
-function KPI({label, value}) {
+function KPI({ label, value }) {
   return <div className={`${cardBase} p-3 text-center`}><div className="text-xs text-white/50">{label}</div><div className="text-xl font-semibold">{value}</div></div>;
 }
 
@@ -4863,12 +5349,12 @@ function TopicList({ title, items, topicMap, tone }) {
     <div className={`${cardBase} p-3`}>
       <div className="text-sm text-white/60 mb-2">{title}</div>
       <div className="space-y-2">
-        {items.length===0 && <div className="text-white/40 text-sm">Not enough data yet.</div>}
+        {items.length === 0 && <div className="text-white/40 text-sm">Not enough data yet.</div>}
         {items.map(t => (
           <div key={t.topic} className="flex items-center justify-between">
             <div className="truncate">{topicMap.get(t.topic)?.label || t.topic}</div>
-            <div className={`text-xs ${tone==="weak"?"text-red-300":"text-emerald-300"}`}>
-              {tone==="weak" ? "" : ""} {(t.weakIndex>=0?"":"") + t.weakIndex.toFixed(2)}
+            <div className={`text-xs ${tone === "weak" ? "text-red-300" : "text-emerald-300"}`}>
+              {tone === "weak" ? "" : ""} {(t.weakIndex >= 0 ? "" : "") + t.weakIndex.toFixed(2)}
             </div>
           </div>
         ))}
@@ -4879,18 +5365,18 @@ function TopicList({ title, items, topicMap, tone }) {
 
 
 function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
-  const badge = rank===1
+  const badge = rank === 1
     ? "from-yellow-300 to-emerald-300"
-    : rank===2
-    ? "from-slate-200 to-slate-400"
-    : rank===3
-    ? "from-amber-500 to-orange-400"
-    : "from-emerald-500 to-cyan-500";
+    : rank === 2
+      ? "from-slate-200 to-slate-400"
+      : rank === 3
+        ? "from-amber-500 to-orange-400"
+        : "from-emerald-500 to-cyan-500";
 
-  const barPct = Math.round((entry.accuracy||0)*100);
+  const barPct = Math.round((entry.accuracy || 0) * 100);
   const date = new Date(entry.when);
   const topicsLabel = entry.bucket === "MIXED"
-    ? entry.topics.map(t=>topicMap.get(t)?.label || t).join(" · ")
+    ? entry.topics.map(t => topicMap.get(t)?.label || t).join(" · ")
     : (topicMap.get(entry.bucket)?.label || entry.bucket);
 
   return (
@@ -4898,9 +5384,8 @@ function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
       layout
       initial={false}
       animate={highlight ? { scale: 1.02 } : { scale: 1 }}
-      className={`${cardBase} p-3 sm:p-4 relative overflow-hidden ${
-        highlight ? "ring-2 ring-emerald-400/70 shadow-[0_0_0_6px_rgba(16,185,129,0.15)]" : ""
-      }`}
+      className={`${cardBase} p-3 sm:p-4 relative overflow-hidden ${highlight ? "ring-2 ring-emerald-400/70 shadow-[0_0_0_6px_rgba(16,185,129,0.15)]" : ""
+        }`}
     >
       <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div className="flex items-center justify-between gap-3">
@@ -4918,8 +5403,8 @@ function LeaderboardRow({ rank, entry, topicMap, highlight = false }) {
           </div>
         </div>
         <div className="text-right text-[10px] sm:text-xs text-white/50">
-          <div>{date.toLocaleDateString()} {date.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
-          <div>{entry.correct}✔ / {entry.attempts} tries · {Math.round((entry.accuracy||0)*100)}% · {entry.avgSecPerQ}s/q</div>
+          <div>{date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+          <div>{entry.correct}✔ / {entry.attempts} tries · {Math.round((entry.accuracy || 0) * 100)}% · {entry.avgSecPerQ}s/q</div>
         </div>
       </div>
       <div className="mt-2 h-2 rounded-full bg-white/5 overflow-hidden">
@@ -4942,9 +5427,9 @@ if (typeof window !== "undefined") {
     console.groupCollapsed("%cdebugAnswersMatch", "color:#10b981;font-weight:bold", { user, correct });
     console.log("user raw:", user);
     console.log("correct raw:", correct);
-    console.log("user numeric:", u, "correct numeric:", c, "diff:", (u!=null&&c!=null)?Math.abs(u-c):null);
-    console.log("equal (numeric <1e-6):", (u!=null&&c!=null) && Math.abs(u-c)<1e-6);
-    console.log("fallback string eq:", (String(user).trim().toLowerCase().replace(/\s+/g,"") === String(correct).trim().toLowerCase().replace(/\s+/g,"")));
+    console.log("user numeric:", u, "correct numeric:", c, "diff:", (u != null && c != null) ? Math.abs(u - c) : null);
+    console.log("equal (numeric <1e-6):", (u != null && c != null) && Math.abs(u - c) < 1e-6);
+    console.log("fallback string eq:", (String(user).trim().toLowerCase().replace(/\s+/g, "") === String(correct).trim().toLowerCase().replace(/\s+/g, "")));
     console.groupEnd();
     return (function answersMatchForDebug(user, correct) {
       const u2 = tryNumeric(user);
@@ -4959,7 +5444,7 @@ if (typeof window !== "undefined") {
 }
 
 // Dev self-tests
-(function __devSelfTests(){
+(function __devSelfTests() {
   const ok = (cond, label) => {
     if (!cond) {
       // eslint-disable-next-line no-console
@@ -4970,19 +5455,19 @@ if (typeof window !== "undefined") {
     }
   };
 
-  const approx = (a,b)=> Math.abs(a-b) < 1e-9;
+  const approx = (a, b) => Math.abs(a - b) < 1e-9;
 
   // Low-level numeric parsing checks
-  ok(approx(tryNumeric("Math.sqrt(2)/2"), Math.SQRT2/2), "num: Math.sqrt(2)/2");
-  ok(approx(tryNumeric("1/√2"),          Math.SQRT2/2), "num: 1/√2");
-  ok(approx(tryNumeric("sqrt2"),         Math.SQRT2),   "num: sqrt2");
-  ok(approx(tryNumeric("\\sqrt{3}"),     Math.sqrt(3)), "num: \\sqrt{3}");
-  ok(approx(tryNumeric("\\√{3}"),        Math.sqrt(3)), "num: \\√{3}");
-  ok(approx(tryNumeric("\\√3"),          Math.sqrt(3)), "num: \\√3");
-  ok(approx(tryNumeric("√(3)"),          Math.sqrt(3)), "num: √(3)");
-  ok(approx(tryNumeric("pi/3"),          Math.PI/3),    "num: pi/3");
-  ok(approx(tryNumeric("π/3"),           Math.PI/3),    "num: π/3");
-  ok(approx(tryNumeric("\\frac{1}{2}"),  0.5),          "num: \\frac{1}{2}");
+  ok(approx(tryNumeric("Math.sqrt(2)/2"), Math.SQRT2 / 2), "num: Math.sqrt(2)/2");
+  ok(approx(tryNumeric("1/√2"), Math.SQRT2 / 2), "num: 1/√2");
+  ok(approx(tryNumeric("sqrt2"), Math.SQRT2), "num: sqrt2");
+  ok(approx(tryNumeric("\\sqrt{3}"), Math.sqrt(3)), "num: \\sqrt{3}");
+  ok(approx(tryNumeric("\\√{3}"), Math.sqrt(3)), "num: \\√{3}");
+  ok(approx(tryNumeric("\\√3"), Math.sqrt(3)), "num: \\√3");
+  ok(approx(tryNumeric("√(3)"), Math.sqrt(3)), "num: √(3)");
+  ok(approx(tryNumeric("pi/3"), Math.PI / 3), "num: pi/3");
+  ok(approx(tryNumeric("π/3"), Math.PI / 3), "num: π/3");
+  ok(approx(tryNumeric("\\frac{1}{2}"), 0.5), "num: \\frac{1}{2}");
 
   // High-level answer equivalence checks (the thing used by the app)
   const expect = (user, correct, label) => ok(window.debugAnswersMatch(user, correct), label);
