@@ -488,20 +488,60 @@ function isUndefLike(s) {
 function normalizeString(s) { return (s ?? "").toString().trim().toLowerCase().replace(/\s+/g, ""); }
 
 
-function answersMatch(user, correct) {
-  // 0) Special "undefined/no value" handling
-  if (isUndefLike(user) && isUndefLike(correct)) return true;
+function answersMatch(userInput, expected) {
+  const user = userInput ?? "";
+  const target = expected ?? "";
 
-  // 1) Numeric compare (most robust)
-  const u = tryNumeric(user);
-  const c = tryNumeric(correct);
-  if (u != null && c != null && Number.isFinite(u) && Number.isFinite(c)) {
-    return Math.abs(u - c) < 1e-6;
+  const userNorm = normalizeString(user);
+  const targetNorm = normalizeString(target);
+
+  if (UNDEF_SET.has(targetNorm)) {
+    return UNDEF_SET.has(userNorm);
   }
 
-  // 2) Fallback to normalized expression text compare
+  if (userNorm && userNorm === targetNorm) {
+    return true;
+  }
+
+  const userNum = tryNumeric(user);
+  const expectedNum = tryNumeric(target);
+  if (
+    userNum != null &&
+    expectedNum != null &&
+    Number.isFinite(userNum) &&
+    Number.isFinite(expectedNum)
+  ) {
+    if (Math.abs(userNum - expectedNum) <= 1e-3) {
+      return true;
+    }
+  }
+
+  const combined = `${user}${target}`;
+  if (/[a-z]/i.test(combined) || /[²³]/.test(combined)) {
+    const samples = [-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 4];
+    let matches = 0;
+    let total = 0;
+    for (const x of samples) {
+      try {
+        const lhs = evalExprAtX(user, x);
+        const rhs = evalExprAtX(target, x);
+        if (Number.isFinite(lhs) && Number.isFinite(rhs)) {
+          total += 1;
+          if (Math.abs(lhs - rhs) <= 1e-3) {
+            matches += 1;
+          }
+        }
+      } catch {
+        // ignore evaluation errors (domain issues, etc.)
+      }
+    }
+    if (total > 0 && matches / total >= 0.9) {
+      return true;
+    }
+  }
+
   const norm = (s) => toJSExpr(String(s)).replace(/\s+/g, '').toLowerCase();
-  return norm(user) === norm(correct);
+  return norm(user) === norm(target);
 }
 
 
@@ -533,35 +573,6 @@ function evalExprAtX(expr, x) {
 }
 
 
-function equalish(userInput, expected) {
-  const uNorm = normalizeString(userInput);
-  const eNorm = normalizeString(expected);
-  if (UNDEF_SET.has(eNorm)) return UNDEF_SET.has(uNorm);
-  if (uNorm === eNorm) return true;
-
-  const uNum = tryNumeric(userInput);
-  const eNum = tryNumeric(expected);
-  if (uNum != null && eNum != null) return Math.abs(uNum - eNum) <= 1e-2;
-
-  // Algebraic fallback: compare functions of x
-  const maybeAlgebra = /[a-z]/i.test(userInput + expected) || /[²³]/.test(userInput + expected);
-  if (maybeAlgebra) {
-    const xs = [-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 4];
-    let ok = 0, tot = 0;
-    for (const x of xs) {
-      try {
-        const a = evalExprAtX(userInput, x);
-        const b = evalExprAtX(expected, x);
-        if (Number.isFinite(a) && Number.isFinite(b)) {
-          tot++; if (Math.abs(a - b) <= 1e-2) ok++;
-        }
-      } catch { /* ignore bad x (domain issues) */ }
-    }
-    return tot > 0 && ok / tot > 0.99; // allow rare domain hiccup
-  }
-
-  return false;
-}
 // --- Quadratic factor helpers ---
 // (Ax + B)(Cx + D) = (AC)x^2 + (AD + BC)x + (BD)
 function expandFactors(A, B, C, D) {
@@ -626,6 +637,111 @@ async function updateGlobalDisplayName(userId, displayName) {
 const CALC_IDS = new Set(CATEGORIES.CALCULATION.map(t => t.id));
 const isCalc = (id) => CALC_IDS.has(id);
 // ---------- MathJax helpers ----------
+function extractBraceGroup(str, startIndex) {
+  if (!str || startIndex < 0 || startIndex >= str.length || str[startIndex] !== '{') {
+    return [null, startIndex];
+  }
+  let depth = 0;
+  let buf = "";
+  for (let i = startIndex; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === '{') {
+      if (depth > 0) buf += ch;
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return [buf, i + 1];
+      }
+      if (depth > 0) buf += ch;
+    } else {
+      buf += ch;
+    }
+  }
+  return [null, str.length];
+}
+
+function replaceLatexFractions(str) {
+  if (!str.includes('\\frac')) return str;
+  const pattern = /\\(?:d|t)?frac\s*\{/g;
+  let output = "";
+  let index = 0;
+  while (index < str.length) {
+    pattern.lastIndex = index;
+    const match = pattern.exec(str);
+    if (!match) {
+      output += str.slice(index);
+      break;
+    }
+    const start = match.index;
+    output += str.slice(index, start);
+
+    const firstBrace = match.index + match[0].length - 1;
+    const [numerator, afterNumerator] = extractBraceGroup(str, firstBrace);
+    if (numerator == null) {
+      output += str.slice(start);
+      break;
+    }
+    const [denominator, afterDenominator] = extractBraceGroup(str, afterNumerator);
+    if (denominator == null) {
+      output += str.slice(start);
+      break;
+    }
+
+    output += `((${numerator}))/((${denominator}))`;
+    index = afterDenominator;
+  }
+  return output;
+}
+
+function replaceLatexSqrt(str) {
+  if (!str.includes('\\sqrt')) return str;
+  const pattern = /\\sqrt\s*\{/g;
+  let output = "";
+  let index = 0;
+  while (index < str.length) {
+    pattern.lastIndex = index;
+    const match = pattern.exec(str);
+    if (!match) {
+      output += str.slice(index);
+      break;
+    }
+    const start = match.index;
+    output += str.slice(index, start);
+
+    const braceIndex = match.index + match[0].length - 1;
+    const [inner, after] = extractBraceGroup(str, braceIndex);
+    if (inner == null) {
+      output += str.slice(start);
+      break;
+    }
+
+    output += `Math.sqrt(${inner})`;
+    index = after;
+  }
+  return output;
+}
+
+function replaceLatexFunctions(str) {
+  const mappings = {
+    sin: "Math.sin",
+    cos: "Math.cos",
+    tan: "Math.tan",
+    arcsin: "Math.asin",
+    arccos: "Math.acos",
+    arctan: "Math.atan",
+    ln: "Math.log",
+    log: "Math.log",
+    exp: "Math.exp",
+  };
+  let out = str;
+  for (const [name, replacement] of Object.entries(mappings)) {
+    const rx = new RegExp(`\\\\${name}\\b`, "gi");
+    out = out.replace(rx, replacement);
+  }
+  return out;
+}
+
 function normalizeToJS(expr) {
   if (expr == null) return "";
   let s = String(expr);
@@ -633,8 +749,12 @@ function normalizeToJS(expr) {
   // basic cleanups
   s = s.replace(/[−—]/g, "-").replace(/\s+/g, "");
   s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
+  s = s.replace(/\\left|\\right/g, "");
+  s = s.replace(/\\,|\\!|\\;|\\:/g, "");
+  s = s.replace(/\\cdot/gi, "*").replace(/\\times/gi, "*").replace(/\\div/gi, "/");
 
   // sqrt forms
+  s = replaceLatexSqrt(s);
   s = s.replace(/√\s*\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`);
   s = s.replace(/√\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)/g, (_, inner) => `Math.sqrt(${inner})`);
   s = s.replace(/\bsqrt\s*\(([^)]+)\)/gi, (_, inner) => `Math.sqrt(${inner})`);
@@ -642,9 +762,14 @@ function normalizeToJS(expr) {
 
   // constants
   s = s.replace(/\bpi\b/gi, "Math.PI").replace(/π/gi, "Math.PI");
+  s = s.replace(/\\pi/gi, "Math.PI");
+  s = s.replace(/\\e(?![A-Za-z])/gi, "Math.E");
 
   // user typed "math." → "Math."
   s = s.replace(/(^|[^A-Za-z])math\./g, "$1Math.");
+
+  s = replaceLatexFractions(s);
+  s = replaceLatexFunctions(s);
 
   // ---- FULL superscript support (0–9 and minus) ----
   const SUP_TO_ASC = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-" };
@@ -653,6 +778,9 @@ function normalizeToJS(expr) {
     return `(${base})**${dec}`;
   });
 
+  s = s.replace(/[{}]/g, (ch) => (ch === '{' ? '(' : ')'));
+  s = s.replace(/\\/g, "");
+
   // guard against accidental double prefixes
   s = s.replace(/(?:Math\.){2,}/g, "Math.");
 
@@ -660,38 +788,42 @@ function normalizeToJS(expr) {
 }
 
 // convert your plain typing to a *simple* LaTeX for preview
-function toTexFromPlain(s) {
-  if (!s) return "";
-  let t = s;
+function toLatexPreview(value) {
+  if (!value) return "";
 
-  // quick escapes
-  t = t.replaceAll('\\', '\\textbackslash ');
+  const raw = String(value);
+  const looksLikeLatex = /\\[a-zA-Z]+|\\frac|\\sqrt|\\pi|\\theta|\\sum|\\int/.test(raw);
+  if (looksLikeLatex) {
+    return raw;
+  }
+
+  let t = raw;
+
+  // make underscores safe for LaTeX when coming from plain text
   t = t.replace(/_/g, '\\_');
 
   // sqrt( ... ) -> \sqrt{ ... }
   t = t.replace(/sqrt\s*\(\s*/gi, '\\sqrt{');
-  // try to balance the closing brace when user types ')'
-  // we won't be perfect, but good enough for live preview
   let open = 0;
-  t = t.replace(/\{/g, m => (open++, m)).replace(/\}/g, m => (open = Math.max(0, open - 1), m));
-  // replace ')' with '}' only to close \sqrt{...}
-  t = t.replace(/\)/g, () => open > 0 ? '}' : ')');
+  t = t
+    .replace(/\{/g, (m) => (open++, m))
+    .replace(/\}/g, (m) => (open = Math.max(0, open - 1), m));
+  t = t.replace(/\)/g, () => (open > 0 ? (open--, '}') : ')'));
 
-  // our ^{} insertion becomes ^{...}
-  // (user types inside the braces already, so just keep it)
-  // allow plain 2^3 too: turn "a^b" into "a^{b}" if not already braced
+  // ensure powers render nicely: a^b → a^{b}
   t = t.replace(/(\w|\))\^(\w)/g, '$1^{\$2}').replace(/\$\{2\}/g, '{');
 
-  // basic fractions: things like (a)/(b) or a/b → \dfrac{a}{b}
-  // safer rule: only convert if user already grouped: ( ... )/( ... ) or \frac already
+  // fractions: (a)/(b) or a/b → \dfrac{a}{b}
   t = t.replace(/\(([^\)]+)\)\s*\/\s*\(([^\)]+)\)/g, '\\dfrac{$1}{$2}');
-  // very simple a/b with small tokens (digits/letters), avoid URLs, etc.
   t = t.replace(/\b([A-Za-z0-9]+)\s*\/\s*([A-Za-z0-9]+)\b/g, '\\dfrac{$1}{$2}');
 
-  // x√3 etc already render fine, but replace unicode √ with \sqrt{}
+  // unicode operators → LaTeX commands
+  t = t.replace(/×/g, '\\times ').replace(/÷/g, '\\div ');
+
+  // unicode radicals → LaTeX sqrt
   t = t.replace(/√\s*([A-Za-z0-9]+)/g, '\\sqrt{$1}');
 
-  return t;
+  return t.trim();
 }
 
 function MathPreview({ latex }) {
@@ -700,9 +832,9 @@ function MathPreview({ latex }) {
   useEffect(() => {
     const mj = window.MathJax;
     if (!mj || !latex || !ref.current) return;
-    (mj.startup?.promise ?? Promise.resolve()).then(() =>
-      mj.typesetPromise([ref.current])
-    );
+    (mj.startup?.promise ?? Promise.resolve())
+      .then(() => mj.typesetPromise([ref.current]))
+      .catch(() => {});
   }, [latex]);
 
   if (!latex) return null;
@@ -828,16 +960,6 @@ function FolderFlashTimerEditor({ value, onChange, onRemove }) {
 }
 
 function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a || 1; }
-
-function weightedPick(entries) {
-  // entries: [[value, weight], ...]
-  const total = entries.reduce((s, [, w]) => s + w, 0);
-  let r = Math.random() * total;
-  for (const [v, w] of entries) {
-    if ((r -= w) <= 0) return v;
-  }
-  return entries[entries.length - 1][0];
-}
 
 function weightedPick2(entries) {
   // entries: [[value, weight], ...]
@@ -3175,8 +3297,8 @@ function BuilderView({
             <div
               className="
     grid grid-cols-1 md:grid-cols-2 gap-4
-    max-h-[calc(100vh-220px)]
-    overflow-y-auto overflow-x-hidden
+    max-h-none lg:max-h-[calc(100vh-220px)]
+    overflow-x-hidden lg:overflow-y-auto
     scrollbar-stealth"
               style={{ scrollbarGutter: 'stable both-edges' }}>
               {Object.entries(CATEGORIES).map(([cat, items]) => {
@@ -4015,18 +4137,12 @@ function RenderPrompt({ prompt, promptLatex }) {
   }
   useEffect(() => { refillPool(); }, []); // on session start
 
-  // run every time current question changes → re-typeset MathJax
   const [lastWasCorrect, setLastWasCorrect] = useState(null);
   function primaryAction() {
     if (state === "finished") return;
 
     if (phase === "go") {
-      const ok = checkOnce();
-      if (ok) {
-        advance();
-      } else {
-        setPhase("reveal");
-      }
+      checkOnce();
       return;
     }
 
@@ -4052,36 +4168,34 @@ function RenderPrompt({ prompt, promptLatex }) {
     let ok = false;
 
     if (typeof current.checker === "function") {
-      ok = !!current.checker(answer);
-    } else {
-      const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, "");
-      const cand = norm(answer);
-      const accepts = new Set(
-        (current.acceptableAnswers ?? [current.answer ?? ""])
-          .map(norm)
-      );
-      if (accepts.has(cand)) {
-        ok = true;
-      } else {
-        const aNum = Number(answer);
-        const target = Number(current.answer);
-        if (Number.isFinite(aNum) && Number.isFinite(target) && aNum === target) {
-          ok = true;
-        }
+      try {
+        ok = !!current.checker(answer);
+      } catch (err) {
+        console.error("Custom checker failed", err);
+        ok = false;
       }
+    } else {
+      const expected = [];
+      if (current.answer != null && String(current.answer).trim() !== "") {
+        expected.push(current.answer);
+      }
+      if (Array.isArray(current.acceptableAnswers)) {
+        expected.push(...current.acceptableAnswers);
+      }
+      ok = expected.length > 0 && expected.some((ans) => answersMatch(answer, ans));
     }
 
-    setAttempts(a => a + 1);
+    setAttempts((a) => a + 1);
 
     if (ok) {
-      recordCorrect();         // <-- this is the piece that was missing
+      recordCorrect();
       setState("correct");
       setLastWasCorrect(true);
-      setPhase("go");          // remain in go; the button/Enter will advance
+      setPhase("next");
     } else {
       setState("wrong");
       setLastWasCorrect(false);
-      setPhase("reveal");      // move to reveal phase after a wrong try
+      setPhase("reveal");
     }
 
     return ok;
@@ -4097,6 +4211,15 @@ function RenderPrompt({ prompt, promptLatex }) {
 
   const [current, setCurrent] = useState(null);
   const [answer, setAnswer] = useState("");
+  const [useNumericPad, setUseNumericPad] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    try {
+      return window.matchMedia("(pointer: coarse)").matches;
+    } catch {
+      return false;
+    }
+  });
+  const latexPreview = useMemo(() => toLatexPreview(answer), [answer]);
   const [topicQuery, setTopicQuery] = useState("");
   const [state, setState] = useState("idle"); // idle | wrong | correct | finished | revealed
   const [phase, setPhase] = useState("go");   // go | reveal | next
@@ -4105,6 +4228,10 @@ function RenderPrompt({ prompt, promptLatex }) {
   const [timeLeft, setTimeLeft] = useState(() => Math.max(5, Math.round(durationMin * 60)));
   const [hidden, setHidden] = useState(false);
   const inputRef = useRef(null);
+  const handleToggleInputMode = () => {
+    setUseNumericPad(prev => !prev);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
   const startedAt = useRef(Date.now());
   const times = useRef([]); // seconds per correct question
   const qStart = useRef(Date.now());
@@ -4163,14 +4290,6 @@ function RenderPrompt({ prompt, promptLatex }) {
     const { score, accuracy } = computeScore({ correct, attempts: attemptsTotal, durationSec: elapsed });
     const entry = { id: `${Date.now()}`, when: new Date().toISOString(), score, accuracy, avgSecPerQ: Math.round(avgSecPerQ * 100) / 100, attempts: attemptsTotal, correct, topics: uniqTopicIds, bucket: isMixed ? "MIXED" : (uniqTopicIds[0] || "MIXED"), label: isMixed ? "Mixed" : (topicMap.get(uniqTopicIds[0])?.label || ""), durationSec: Math.round(durationMin * 60), };
     onFinish?.(entry);
-  }
-
-
-  function revealAnswer() {
-    if (!current || state === "finished") return;
-    setAttempts(a => a + 1);
-    setState("revealed");
-    setPhase("next"); // next press (or Enter) should go to next question
   }
 
   // --- Symbols inserter --- will suggest based on prompt
@@ -4248,48 +4367,86 @@ function RenderPrompt({ prompt, promptLatex }) {
 
               <form
                 onSubmit={(e) => { e.preventDefault(); primaryAction(); }}
-                className="mt-4 flex items-center justify-center gap-2"
+                className="mt-4 w-full flex flex-col items-stretch gap-4"
               >
-                <input
-                  ref={inputRef}
-                  value={answer}
-                  onChange={(e) => setAnswer(beautifyInline(e.target.value))}
-                  placeholder="Type answer and hit Enter"
-                  className={`w-full max-w-md px-4 py-3 rounded-2xl bg-white/5 border outline-none text-lg ${state === "wrong"
-                    ? "border-red-500/50 focus:border-red-400/60"
-                    : "border-white/10 focus:border-emerald-400/50"
-                    }`}
-                />
+                <div className="grid gap-3 w-full max-w-3xl mx-auto sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="quiz-answer-input" className="text-xs uppercase tracking-wider text-white/40">Your answer</label>
+                      <button
+                        type="button"
+                        onClick={handleToggleInputMode}
+                        className="text-[10px] uppercase tracking-wider px-3 py-1 rounded-lg border border-white/10 text-white/60 hover:text-white/80 hover:border-white/20 hover:bg-white/10 transition-colors"
+                        title={useNumericPad ? "Switch to full keyboard" : "Switch to numeric keypad"}
+                      >
+                        {useNumericPad ? "Use ABC keyboard" : "Use 123 keypad"}
+                      </button>
+                    </div>
+                    <input
+                      id="quiz-answer-input"
+                      ref={inputRef}
+                      value={answer}
+                      onChange={(e) => setAnswer(beautifyInline(e.target.value))}
+                      placeholder="Type answer and press Enter"
+                      inputMode={useNumericPad ? "decimal" : "text"}
+                      enterKeyHint="done"
+                      className={`w-full px-4 py-3 rounded-2xl bg-white/5 border outline-none text-lg transition-colors ${state === "wrong"
+                        ? "border-red-500/50 focus:border-red-400/60"
+                        : "border-white/10 focus:border-emerald-400/50"
+                        }`}
+                    />
+                    <p className="text-xs text-white/50">
+                      Supports plain text or MathJax commands like <code className="font-mono">\frac{1}{2}</code> and <code className="font-mono">\sqrt{3}</code>. Tap the toggle to switch between the keypad and full keyboard.
+                    </p>
+                  </div>
 
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  onClick={primaryAction}
-                >
-                  {phase === "go" && (<><Play size={16} /> Go</>)}
-                  {phase === "reveal" && state !== "revealed" && (<><Eye size={16} /> Reveal</>)}
-                  {phase === "reveal" && state === "revealed" && (<><Check size={16} /> Next</>)}
-                  {phase === "next" && (<><Check size={16} /> Next</>)}
-                </button>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs uppercase tracking-wider text-white/40">MathJax preview</span>
+                    <div
+                      className={`min-h-[88px] rounded-2xl border px-4 py-3 bg-white/5 flex items-center justify-center text-center ${state === "wrong"
+                        ? "border-red-500/40"
+                        : "border-white/10"
+                        }`}
+                    >
+                      {latexPreview ? (
+                        <MathPreview latex={latexPreview} />
+                      ) : (
+                        <span className="text-sm text-white/40">Start typing to see your answer rendered.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-                {phase === "reveal" && (
-                  <button type="button" onClick={checkOnce} className={btnGhost}>
-                    <Check size={16} /> Again
-                  </button>
-                )}
-
-                {hidden && phase === "go" && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => { setState("revealed"); setPhase("next"); }}
-                    className={btnGhost}
+                    className={btnPrimary}
+                    onClick={primaryAction}
                   >
-                    <Eye size={16} /> Reveal now
+                    {phase === "go" && (<><Play size={16} /> Go</>)}
+                    {phase === "reveal" && state !== "revealed" && (<><Eye size={16} /> Reveal</>)}
+                    {phase === "reveal" && state === "revealed" && (<><Check size={16} /> Next</>)}
+                    {phase === "next" && (<><Check size={16} /> Next</>)}
                   </button>
-                )}
+
+                  {phase === "reveal" && (
+                    <button type="button" onClick={checkOnce} className={btnGhost}>
+                      <Check size={16} /> Again
+                    </button>
+                  )}
+
+                  {hidden && phase === "go" && (
+                    <button
+                      type="button"
+                      onClick={() => { setState("revealed"); setPhase("next"); }}
+                      className={btnGhost}
+                    >
+                      <Eye size={16} /> Reveal now
+                    </button>
+                  )}
+                </div>
               </form>
 
-              {/* Live MathJax preview under the input */}
               {/* Symbols toolbar */}
               <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                 {suggestedSymbols.map(sym => (
