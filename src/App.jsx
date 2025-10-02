@@ -307,7 +307,7 @@ const CATEGORIES = {
     { id: "mental_add", label: "Addition" },
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
-    { id: "mental_decimal_mul", label: "Decimal × Digit" },
+    { id: "mental_decimal_mul", label: "Decimal Ã— Digit" },
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "mul_focus_multiples", label: "Multiplication (2 Digit)" },
     { id: "mental_div", label: "Division" },
