@@ -307,6 +307,7 @@ const CATEGORIES = {
     { id: "mental_add", label: "Addition" },
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
+    { id: "mental_decimal_mul", label: "Decimal � Digit" },
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "mul_focus_multiples", label: "Multiplication (2 Digit)" },
     { id: "mental_div", label: "Division" },
@@ -328,6 +329,7 @@ const CATEGORIES = {
   ],
   FRACTIONS: [
     { id: "common_frac_to_dec_2dp", label: "Fractions and Decimals" },
+    { id: "friendly_frac_decimals", label: "Friendly Fraction <-> Decimal" },
     { id: "simplify_fraction", label: "Simplifying fractions" },
   ],
   ALGEBRA: [
@@ -362,7 +364,7 @@ const CATEGORIES = {
 };
 
 const PRESETS = [
-  { name: "MENTAL CALCULATIONS", topics: ["mental_add", "mental_sub", "mental_mul", "mul_focus_multiples", "mental_div"] },
+  { name: "MENTAL CALCULATIONS", topics: ["mental_add", "mental_sub", "mental_mul", "mental_decimal_mul", "mul_focus_multiples", "mental_div"] },
   { name: "TRIGONOMETRY", topics: ["trig_recall", "trig_eval"] },
   { name: "GEOMETRY SA/V", topics: ["sphere_volume", "sphere_area", "cylinder_sa", "cone_sa", "square_pyramid_sa"] },
   { name: "EQUATIONS MIX", topics: ["suvat_solve", "speed_basic", "units_convert"] },
@@ -1334,12 +1336,32 @@ function genQuestion(topic) {
     case "mental_add": { const a = randInt(10, 999), b = randInt(10, 999); return { prompt: `${a} + ${b}`, answer: String(a + b) }; }
     case "mental_sub": { const a = randInt(100, 999), b = randInt(10, 999); const [x, y] = a > b ? [a, b] : [b, a]; return { prompt: `${x} - ${y}`, answer: String(x - y) }; }
     case "mental_mul": { const a = randInt(10, 99), b = randInt(2, 9); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
+    case "mental_decimal_mul": {
+      const whole = randInt(10, 99);
+      const tenth = randInt(1, 9);
+      const digit = randInt(2, 9);
+      const scaled = whole * 10 + tenth;
+      const decimalStr = `${whole}.${tenth}`;
+      const productScaled = scaled * digit;
+      const wholeAnswer = Math.floor(productScaled / 10);
+      const remainder = productScaled % 10;
+      const answer = remainder === 0 ? String(wholeAnswer) : `${wholeAnswer}.${remainder}`;
+      const precise = remainder === 0 ? `${wholeAnswer}.0` : answer;
+      const acceptable = Array.from(new Set([answer, precise]));
+      return {
+        prompt: `${decimalStr} × ${digit}`,
+        answer,
+        acceptableAnswers: acceptable,
+        checker: (input) => acceptable.some((ans) => answersMatch(input, ans)),
+      };
+    }
     case "mul_focus_multiples": { const a = pick([12, 13, 14, 15, 16, 25]); const b = randInt(1, 12); return { prompt: `${a} × ${b}`, answer: String(a * b) }; }
     case "tri_special": {
       // Canonical layout: right angle at A (bottom-left), base=AB (horizontal), vertical=AC (up)
       const type = pick(["30-60-90", "45-45-90"]);
       const mode = pick(["length", "angle"]); // "length" (find x) OR "angle" (find θ)
       const u = randInt(2, 20);
+      const orientation = (Math.random() * 2 - 1) * Math.PI;
 
       const makeAns = (exactStr, numericVal) => {
         const approx = String(Math.round(numericVal * 1000) / 1000);
@@ -1386,6 +1408,7 @@ function genQuestion(topic) {
               lengths: { base: numeric.long, vertical: numeric.short },
               labels,
               angleHint,
+              orientation,
               isoRight: false,
               thetaAt: null,
             },
@@ -1422,6 +1445,7 @@ function genQuestion(topic) {
               lengths: { base: numeric.long, vertical: numeric.short },
               labels,
               angleHint: null,   // keep only θ marked
+              orientation,
               isoRight: false,
               thetaAt,
             },
@@ -1451,6 +1475,7 @@ function genQuestion(topic) {
               lengths: { base: numeric.leg, vertical: numeric.leg },
               labels,
               angleHint: null,
+              orientation,
               isoRight: true,   // draw equal-leg ticks
               thetaAt: null,
             },
@@ -1470,6 +1495,7 @@ function genQuestion(topic) {
               lengths: { base: numeric.leg, vertical: numeric.leg },
               labels,
               angleHint: null,
+              orientation,
               isoRight: true,
               thetaAt,
             },
@@ -2509,6 +2535,75 @@ Rounded to 2 d.p., √${n} ≈ ${answer}.`;
       return { prompt, answer: ans, acceptableAnswers: acceptable, checker };
     }
 
+
+    case "friendly_frac_decimals": {
+      const buildFriendlyList = () => {
+        const seen = new Set();
+        const list = [];
+        const reducePair = (num, den) => {
+          if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
+          let p = num;
+          let q = den;
+          if (q < 0) { p = -p; q = -q; }
+          const g = gcd(p, q);
+          const n = p / g;
+          const d = q / g;
+          if (d === 1) return null;
+          return [n, d];
+        };
+        const formatDecimal = (num, den) => {
+          const value = num / den;
+          const rounded = Math.round(value * 1000) / 1000;
+          let s = rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+          if (!s.includes(".")) s += ".0";
+          return s;
+        };
+        const add = (num, den) => {
+          const reduced = reducePair(num, den);
+          if (!reduced) return;
+          const [n, d] = reduced;
+          const key = `${n}/${d}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          list.push({ fraction: key, decimalStr: formatDecimal(n, d), num: n, den: d });
+        };
+        const addSet = (den, max) => {
+          for (let i = 1; i <= max; i += 1) add(i, den);
+        };
+        addSet(5, 9);
+        addSet(4, 7);
+        addSet(2, 5);
+        return list;
+      };
+      const friendlyList = buildFriendlyList();
+      const item = pick(friendlyList);
+      const toDecimal = Math.random() < 0.5;
+      if (toDecimal) {
+        const answer = item.decimalStr;
+        const numeric = item.num / item.den;
+        const alt = (Math.round(numeric * 100) / 100).toString();
+        const acceptable = Array.from(new Set([answer, numeric.toString(), alt]));
+        return {
+          prompt: `Convert to decimal: ${item.fraction}`,
+          answer,
+          acceptableAnswers: acceptable,
+          checker: (input) => acceptable.some((ans) => answersMatch(input, ans)),
+        };
+      }
+      const fractionForms = new Set([item.fraction]);
+      [2, 5, 10].forEach((mult) => {
+        const num = item.num * mult;
+        const den = item.den * mult;
+        if (num <= 200 && den <= 200) fractionForms.add(`${num}/${den}`);
+      });
+      const acceptable = Array.from(fractionForms);
+      return {
+        prompt: `Convert to fraction: ${item.decimalStr}`,
+        answer: item.fraction,
+        acceptableAnswers: acceptable,
+        checker: (input) => acceptable.some((ans) => answersMatch(input, ans)),
+      };
+    }
 
     case "units_convert": { const mode = pick(["k2m", "m2k"]); if (mode === "k2m") { const v = randInt(10, 120); const ms = Math.round((v * 1000 / 3600) * 100) / 100; return { prompt: `Convert ${v} km/h to m/s`, answer: String(ms) }; } else { const v = randInt(3, 40); const k = Math.round((v * 3.6) * 100) / 100; return { prompt: `Convert ${v} m/s to km/h`, answer: String(k) }; } }
 
