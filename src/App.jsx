@@ -456,12 +456,143 @@ function toSuperscriptFromCaret(text) {
   });
 }
 
+function wrapExponentInput(str) {
+  let out = String(str ?? "");
+  out = out.replace(/\^\s+/g, "^");
+  out = out.replace(/\^([+-]?\d+\/[-+]?\d+)/g, '^($1)');
+  out = out.replace(/\^(-\d+)(?![\d(])/g, '^($1)');
+  return out;
+}
+
 function beautifyInline(s) {
-  return toSuperscriptFromCaret(
-    s
-      .replace(/sqrt\(/gi, "√(") // make sqrt look nice
-      .replace(/\*/g, "×")       // optional: show × instead of *
-  );
+  const prepared = String(s ?? "")
+    .replace(/sqrt\(/gi, "√(") // make sqrt look nice
+    .replace(/\*/g, "×");       // optional: show × instead of *
+
+  const wrapped = wrapExponentInput(prepared);
+  return toSuperscriptFromCaret(wrapped);
+}
+
+function fractionToLatex(p, q) {
+  const [P, Q] = reduceFraction(p, q);
+  if (Q === 1) return String(P);
+  return `\\frac{${P}}{${Q}}`;
+}
+
+function buildPowerTermStrings(coefNum, coefDen, expNum, expDen) {
+  let [cNum, cDen] = reduceFraction(coefNum, coefDen);
+  let [pNum, pDen] = reduceFraction(expNum, expDen);
+  if (cNum === 0) {
+    return { plain: "0", latex: "0", js: "0" };
+  }
+
+  const fractionPlain = (n, d) => {
+    const [N, D] = reduceFraction(n, d);
+    return D === 1 ? String(N) : `(${N}/${D})`;
+  };
+  const fractionJS = (n, d) => {
+    const [N, D] = reduceFraction(n, d);
+    return D === 1 ? String(N) : `(${N}/${D})`;
+  };
+
+  const xPlain = (() => {
+    if (pNum === 0) return "";
+    if (pNum === pDen) return "x";
+    if (pDen === 1) return `x^${pNum}`;
+    return `x^(${pNum}/${pDen})`;
+  })();
+  const xLatex = (() => {
+    if (pNum === 0) return "";
+    if (pNum === pDen) return "x";
+    if (pDen === 1) return `x^{${pNum}}`;
+    return `x^{\\frac{${pNum}}{${pDen}}}`;
+  })();
+  const xJS = (() => {
+    if (pNum === 0) return "";
+    if (pNum === pDen) return "x";
+    if (pDen === 1) return `x**${pNum}`;
+    return `x**(${pNum}/${pDen})`;
+  })();
+
+  if (pNum === 0) {
+    const plainVal = fractionPlain(cNum, cDen);
+    const latexVal = fractionToLatex(cNum, cDen);
+    const jsVal = fractionJS(cNum, cDen);
+    return { plain: plainVal, latex: latexVal, js: jsVal };
+  }
+
+  const sign = cNum < 0 ? "-" : "";
+  const absNum = Math.abs(cNum);
+
+  const plainCoef = (() => {
+    if (cDen === 1) {
+      if (absNum === 1) return sign === "-" ? "-" : "";
+      return `${sign}${absNum}`;
+    }
+    return sign === "-" ? `(-${absNum}/${cDen})` : `(${absNum}/${cDen})`;
+  })();
+  const latexCoef = (() => {
+    if (cDen === 1) {
+      if (absNum === 1) return sign === "-" ? "-" : "";
+      return `${sign}${absNum}`;
+    }
+    const frac = `\\frac{${absNum}}{${cDen}}`;
+    return sign === "-" ? `-${frac}` : frac;
+  })();
+  const coefJS = fractionJS(cNum, cDen);
+
+  const plain = plainCoef ? `${plainCoef}${xPlain}` : xPlain || "1";
+  const latex = latexCoef ? `${latexCoef}${xLatex}` : xLatex || "1";
+  let js;
+  if (!xJS) {
+    js = coefJS;
+  } else if (coefJS === "1") {
+    js = xJS;
+  } else if (coefJS === "-1") {
+    js = `-(${xJS})`;
+  } else {
+    js = `(${coefJS})*(${xJS})`;
+  }
+
+  return { plain, latex, js };
+}
+
+function stripTrailingPlusC(expr) {
+  if (expr == null) return expr;
+  return String(expr).replace(/\s*\+\s*[Cc]\s*$/, "");
+}
+
+function expressionsEquivalent(userExpr, targetExpr, samples = [0.5, 1.1, 1.8, 2.6, 3.3]) {
+  if (userExpr == null) return false;
+  const cleaned = stripTrailingPlusC(String(userExpr).trim());
+  if (!cleaned) return false;
+
+  let userJS;
+  let targetJS;
+  try {
+    userJS = normalizeToJS(cleaned);
+    targetJS = normalizeToJS(targetExpr);
+  } catch {
+    return false;
+  }
+  if (!userJS || !targetJS) return false;
+
+  let total = 0;
+  let matched = 0;
+  for (const x of samples) {
+    try {
+      const expected = evalExprAtX(targetJS, x);
+      const given = evalExprAtX(userJS, x);
+      if (!Number.isFinite(expected) || !Number.isFinite(given)) continue;
+      total += 1;
+      if (Math.abs(expected - given) <= 1e-4 * Math.max(1, Math.abs(expected))) {
+        matched += 1;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return total >= 3 && matched / total >= 0.9;
 }
 
 // Fractions helpers
@@ -475,6 +606,16 @@ function formatFraction(p, q) {
   const [P, Q] = reduceFraction(p, q);
   return Q === 1 ? String(P) : `${P}/${Q}`;
 }
+function escapeLatexForStorage(value) {
+  if (value == null) return '';
+  return String(value).replace(/\\/g, '\\\\');
+}
+
+function unescapeLatexValue(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/\\\\/g, '\\');
+}
+
 // Parser helpers (accepts fractions, sqrt(), π, etc.)
 const UNDEF_SET = new Set([
   "undef", "undefined", "e", "doesnotexist", "noanswer", "novalue",
@@ -1028,46 +1169,44 @@ function genQuestion(topic) {
     case "diff_speed": {
       const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
       const simp = (n, d) => { const g = gcd(n, d); return [n / g, d / g]; };
-      const asFrac = (n, d) => `(${n}/${d})`;
 
       const pickLocal = (arr) => (typeof pick === "function" ? pick(arr) : arr[Math.floor(Math.random() * arr.length)]);
 
-      // coefficient
       const [kNum, kDen] = pickLocal([[1, 1], [2, 1], [3, 1], [-1, 1], [1, 2], [3, 2]]);
 
-      // exponent (avoid -1)
       const useHalf = Math.random() < 0.3;
       let nNum, nDen;
       if (useHalf) [nNum, nDen] = pickLocal([[1, 2], [3, 2], [-1, 2]]);
       else { nNum = pickLocal([-5, -4, -3, -2, 2, 3, 4, 5]); nDen = 1; }
 
-      // derivative coeff
       let dNum = kNum * nNum, dDen = kDen * nDen;
       [dNum, dDen] = simp(dNum, dDen);
 
-      // new power
       let mNum = nNum - nDen, mDen = nDen;
       [mNum, mDen] = simp(mNum, mDen);
 
-      // --- string builders ---
-      const powerStr = (p, q) => q === 1 ? toSup(p) : `^(${p}/${q})`;
-      const kStr = (kDen === 1 ? (kNum === 1 ? "" : kNum === -1 ? "-" : String(kNum)) : asFrac(kNum, kDen));
-      const nStr = powerStr(nNum, nDen);
-      const integrand = `${kStr}x${nStr}`;
+      const integrandStrings = buildPowerTermStrings(kNum, kDen, nNum, nDen);
+      const derivativeStrings = buildPowerTermStrings(dNum, dDen, mNum, mDen);
 
-      let ans;
-      if (dNum === 0) ans = "0";
-      else if (mNum === 0) ans = (dDen === 1 ? String(dNum) : asFrac(dNum, dDen));
-      else {
-        const coefStr = (dDen === 1 ? (Math.abs(dNum) === 1 ? (dNum === -1 ? "-" : "") : String(dNum)) : asFrac(dNum, dDen));
-        const mStr = powerStr(mNum, mDen);
-        ans = `${coefStr}x${mStr}`;
-      }
+      const checker = (input) => {
+        const cleaned = stripTrailingPlusC(input);
+        if (derivativeStrings.js === "0") {
+          return answersMatch(cleaned, "0");
+        }
+        if (expressionsEquivalent(cleaned, derivativeStrings.js)) {
+          return true;
+        }
+        return answersMatch(cleaned, derivativeStrings.plain);
+      };
+
+      const promptText = "Differentiate the expression.";
 
       return {
-        prompt: `Differentiate: d/dx [ ${integrand} ]`,
-        answer: ans,
-        acceptableAnswers: [ans],
+        prompt: promptText,
+        promptLatex: escapeLatexForStorage(`\\frac{d}{dx}\\left[ ${integrandStrings.latex} \\right]`),
+        answer: derivativeStrings.plain,
+        acceptableAnswers: [derivativeStrings.plain],
+        checker,
       };
     }
 
@@ -1077,47 +1216,90 @@ function genQuestion(topic) {
     case "integrate_speed": {
       const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
       const simp = (n, d) => { const g = gcd(n, d); return [n / g, d / g]; };
-      const asFrac = (n, d) => `(${n}/${d})`;
-      const withC = (s) => `${s} + C`;
-
       const pickLocal = (arr) => (typeof pick === "function" ? pick(arr) : arr[Math.floor(Math.random() * arr.length)]);
 
-      // coefficient
-      const [kNum, kDen] = pickLocal([[1, 1], [2, 1], [3, 1], [-1, 1], [1, 2], [3, 2], [9, 1]]);
+      const toFraction = (n, d = 1) => simp(n, d);
+      const multiplyFrac = (a, b) => simp(a[0] * b[0], a[1] * b[1]);
+      const subtractFrac = (a, b) => simp(a[0] * b[1] - b[0] * a[1], a[1] * b[1]);
+      const intPow = (base, exponent) => {
+        if (exponent === 0) return 1;
+        let result = 1;
+        let e = exponent;
+        let b = base;
+        while (e > 0) {
+          if (e % 2 === 1) result *= b;
+          e = Math.floor(e / 2);
+          if (e > 0) b *= b;
+        }
+        return result;
+      };
+      const powFraction = (value, num, den) => {
+        if (den === 1) {
+          if (num >= 0) {
+            return toFraction(intPow(value, num), 1);
+          }
+          const pow = intPow(value, -num);
+          return toFraction(1, pow);
+        }
+        const root = Math.round(Math.sqrt(value));
+        if (root * root !== value) {
+          throw new Error("integrate_speed: non-square bound for half exponent");
+        }
+        if (num >= 0) {
+          return toFraction(intPow(root, num), 1);
+        }
+        return toFraction(1, intPow(root, -num));
+      };
+      const pickOrdered = (values) => {
+        let a = pickLocal(values);
+        let b = pickLocal(values);
+        while (b === a) b = pickLocal(values);
+        return a < b ? [a, b] : [b, a];
+      };
 
-      // exponent (include -1 for ln)
-      const useHalf = Math.random() < 0.3;
-      let nNum, nDen;
-      if (useHalf) [nNum, nDen] = pickLocal([[1, 2], [3, 2], [-1, 2]]);
-      else { nNum = pickLocal([-5, -4, -3, -2, -1, 2, 3, 4, 5]); nDen = 1; }
+      const [kNum, kDen] = pickLocal([[1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [9, 1], [-1, 1], [-2, 1], [-3, 1], [-4, 1], [1, 2], [3, 2], [-3, 2], [-5, 2]]);
 
-      // --- string builders ---
-      const powerStr = (p, q) => q === 1 ? toSup(p) : `^(${p}/${q})`;
-      const kStr = (kDen === 1 ? (kNum === 1 ? "" : kNum === -1 ? "-" : String(kNum)) : asFrac(kNum, kDen));
-      const nStr = powerStr(nNum, nDen);
-      const integrand = `${kStr}x${nStr}`;
+      let [nNum, nDen] = pickLocal([[-3, 1], [-2, 1], [-3, 2], [-1, 2], [1, 2], [3, 2], [2, 1], [3, 1], [4, 1], [5, 1]]);
+      [nNum, nDen] = simp(nNum, nDen);
 
-      // --- answer ---
-      let ans;
-      if (nNum === -1 && nDen === 1) {
-        // ln case
-        const coef = (kDen === 1 ? (Math.abs(kNum) === 1 ? (kNum === -1 ? "-" : "") : String(kNum)) : asFrac(kNum, kDen));
-        ans = withC(`${coef}ln|x|`);
+      const integrandStrings = buildPowerTermStrings(kNum, kDen, nNum, nDen);
+
+      let bounds;
+      if (nDen === 2) {
+        bounds = pickOrdered([1, 4, 9, 16]);
+      } else if (nNum < 0) {
+        bounds = pickOrdered([1, 2, 3, 4, 5, 6]);
       } else {
-        let p = nNum + nDen, q = nDen;
-        let num = kNum * q, den = kDen * p;
-        [num, den] = simp(num, den);
-        const coef = (den === 1 ? String(num) : asFrac(num, den));
-        const expStr = powerStr(p, q);
-        ans = withC(`${coef}x${expStr}`);
+        bounds = pickOrdered([-2, -1, 0, 1, 2, 3, 4]);
       }
+      const [lower, upper] = bounds;
+
+      const pNum = nNum + nDen;
+      const pDen = nDen;
+
+      const [coefNum, coefDen] = simp(kNum * pDen, kDen * pNum);
+
+      const upperPow = powFraction(upper, pNum, pDen);
+      const lowerPow = powFraction(lower, pNum, pDen);
+
+      const coefFrac = [coefNum, coefDen];
+      const upperTerm = multiplyFrac(coefFrac, upperPow);
+      const lowerTerm = multiplyFrac(coefFrac, lowerPow);
+      const [resNum, resDen] = subtractFrac(upperTerm, lowerTerm);
+
+      const answerPlain = formatFraction(resNum, resDen);
+      const promptText = `Evaluate the definite integral from ${lower} to ${upper}.`;
 
       return {
-        prompt: `Integrate: ∫ ${integrand} dx`,
-        answer: ans,
-        acceptableAnswers: [ans],
+        prompt: promptText,
+        promptLatex: escapeLatexForStorage(`\\int_{${lower}}^{${upper}} ${integrandStrings.latex}\\, dx`),
+        answer: answerPlain,
+        acceptableAnswers: [answerPlain],
+        checker: (input) => answersMatch(input, answerPlain),
       };
     }
+
+
 
 
     case "mental_add": { const a = randInt(10, 999), b = randInt(10, 999); return { prompt: `${a} + ${b}`, answer: String(a + b) }; }
@@ -1955,8 +2137,8 @@ x₁ = ½(x₀ + ${n}/x₀) ≈ ${x1str}
 Rounded to 2 d.p., √${n} ≈ ${answer}.`;
 
   // KaTeX prompt (your renderer shows this under the title)
-  const prompt = "Estimate to 2 d.p.";
-  const promptLatex = `\\( \\sqrt{${n}} \\)`;
+  const prompt = "Estimate to 1 d.p.";
+  const promptLatex = `\\sqrt{${n}}`;
 
   // Checker: accept numbers that round to the same 2 d.p.
   // Tolerance: within 0.005 of the true value, i.e., correct nearest rounding.
@@ -3596,10 +3778,26 @@ function QuizView({ topicIds, topicMap, durationMin, flashSeconds, includesFlash
 function RenderPrompt({ prompt, promptLatex }) {
   // Highest priority: explicit promptLatex
   if (typeof promptLatex === 'string' && promptLatex.trim().length) {
+    let textContent = null;
+    if (typeof prompt === 'string') {
+      let candidate = prompt.trim();
+      const colonIdx = candidate.indexOf(':');
+      if (colonIdx !== -1) {
+        const before = candidate.slice(0, colonIdx).trim();
+        const after = candidate.slice(colonIdx + 1).trim();
+        if (before && after && /[0-9A-Za-z^*/()\[\]{}]/.test(after)) {
+          candidate = before;
+        }
+      }
+      if (candidate) textContent = candidate;
+    } else if (prompt) {
+      textContent = prompt;
+    }
+    const latexForRender = unescapeLatexValue(promptLatex);
     return (
       <div className="flex items-center justify-center gap-2 flex-wrap">
-        {prompt ? <span>{prompt}</span> : null}
-        <InlineMath math={promptLatex} />
+        {textContent ? <span>{textContent}</span> : null}
+        <InlineMath math={latexForRender} />
       </div>
     );
   }
@@ -4167,6 +4365,11 @@ function RenderPrompt({ prompt, promptLatex }) {
 
     let ok = false;
 
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+      autoAdvanceRef.current = null;
+    }
+
     if (typeof current.checker === "function") {
       try {
         ok = !!current.checker(answer);
@@ -4192,6 +4395,10 @@ function RenderPrompt({ prompt, promptLatex }) {
       setState("correct");
       setLastWasCorrect(true);
       setPhase("next");
+      autoAdvanceRef.current = setTimeout(() => {
+        autoAdvanceRef.current = null;
+        advance();
+      }, 350);
     } else {
       setState("wrong");
       setLastWasCorrect(false);
@@ -4201,6 +4408,10 @@ function RenderPrompt({ prompt, promptLatex }) {
     return ok;
   };
   const advance = () => {
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+      autoAdvanceRef.current = null;
+    }
     next();
     setAnswer("");
     setState("idle");
@@ -4211,6 +4422,7 @@ function RenderPrompt({ prompt, promptLatex }) {
 
   const [current, setCurrent] = useState(null);
   const [answer, setAnswer] = useState("");
+  const autoAdvanceRef = useRef(null);
   const [useNumericPad, setUseNumericPad] = useState(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
     try {
@@ -4236,6 +4448,13 @@ function RenderPrompt({ prompt, promptLatex }) {
   const times = useRef([]); // seconds per correct question
   const qStart = useRef(Date.now());
   const hideTimer = useRef(null);
+  useEffect(() => () => {
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+      autoAdvanceRef.current = null;
+    }
+  }, []);
+
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   useEffect(() => {
     if (!showExitConfirm) return;
@@ -4305,7 +4524,7 @@ function RenderPrompt({ prompt, promptLatex }) {
   }
   const suggestedSymbols = useMemo(() => {
     const p = String(current?.prompt ?? "").toLowerCase();
-    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷", "λ"];
+    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷", "λ", "x"];
     const need = new Set(base);
     if (p.includes("π") || p.includes("pi")) need.add("π");
     if (p.includes("^") || p.includes("power") || p.includes("²") || p.includes("³")) need.add("^");
