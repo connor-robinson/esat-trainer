@@ -562,16 +562,43 @@ function stripTrailingPlusC(expr) {
   return String(expr).replace(/\s*\+\s*[Cc]\s*$/, "");
 }
 
+const SUPERSCRIPT_CHAR_MAP = {
+  '\u2070': '0', '\u00B9': '1', '\u00B2': '2', '\u00B3': '3', '\u2074': '4', '\u2075': '5', '\u2076': '6', '\u2077': '7', '\u2078': '8', '\u2079': '9',
+  '\u207A': '+', '\u207B': '-', '\u2044': '/',
+};
+
+function normalizePrettyMathText(value) {
+  if (value == null) return '';
+  let out = String(value);
+
+  out = out
+    .replace(/[\u00D7\u22C5\u00B7\u2022]/g, '*')
+    .replace(/[\u00F7]/g, '/')
+    .replace(/[\u2212\u2013\u2014]/g, '-');
+
+  out = out.replace(/[\u221A]\s*\(/g, 'sqrt(');
+  out = out.replace(/[\u221A]\s*([A-Za-z0-9]+)/g, (m, body) => `sqrt(${body})`);
+
+  out = out.replace(/([A-Za-z0-9)\]])([\u2070\u2074\u2075\u2076\u2077\u2078\u2079\u207A\u207B\u00B9\u00B2\u00B3]+)/g, (match, base, sup) => {
+    const mapped = sup.split('').map((ch) => SUPERSCRIPT_CHAR_MAP[ch] ?? '').join('');
+    if (!mapped) return `${base}^(${sup})`;
+    return `${base}^(${mapped})`;
+  });
+
+  return out;
+}
+
 function expressionsEquivalent(userExpr, targetExpr, samples = [0.5, 1.1, 1.8, 2.6, 3.3]) {
   if (userExpr == null) return false;
-  const cleaned = stripTrailingPlusC(String(userExpr).trim());
+  const cleaned = normalizePrettyMathText(stripTrailingPlusC(String(userExpr).trim()));
   if (!cleaned) return false;
+  const targetClean = normalizePrettyMathText(stripTrailingPlusC(String(targetExpr ?? '')));
 
   let userJS;
   let targetJS;
   try {
     userJS = normalizeToJS(cleaned);
-    targetJS = normalizeToJS(targetExpr);
+    targetJS = normalizeToJS(targetClean);
   } catch {
     return false;
   }
@@ -581,8 +608,8 @@ function expressionsEquivalent(userExpr, targetExpr, samples = [0.5, 1.1, 1.8, 2
   let matched = 0;
   for (const x of samples) {
     try {
-      const expected = evalExprAtX(targetJS, x);
-      const given = evalExprAtX(userJS, x);
+      const expected = evalExprAtX(targetClean, x);
+      const given = evalExprAtX(cleaned, x);
       if (!Number.isFinite(expected) || !Number.isFinite(given)) continue;
       total += 1;
       if (Math.abs(expected - given) <= 1e-4 * Math.max(1, Math.abs(expected))) {
@@ -630,8 +657,11 @@ function normalizeString(s) { return (s ?? "").toString().trim().toLowerCase().r
 
 
 function answersMatch(userInput, expected) {
-  const user = userInput ?? "";
-  const target = expected ?? "";
+  const rawUser = stripTrailingPlusC(userInput ?? '');
+  const rawTarget = stripTrailingPlusC(expected ?? '');
+
+  const user = normalizePrettyMathText(rawUser);
+  const target = normalizePrettyMathText(rawTarget);
 
   const userNorm = normalizeString(user);
   const targetNorm = normalizeString(target);
@@ -658,7 +688,7 @@ function answersMatch(userInput, expected) {
   }
 
   const combined = `${user}${target}`;
-  if (/[a-z]/i.test(combined) || /[²³]/.test(combined)) {
+  if (/[^0-9.eE+-]/.test(combined)) {
     const samples = [-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 4];
     let matches = 0;
     let total = 0;
@@ -681,10 +711,9 @@ function answersMatch(userInput, expected) {
     }
   }
 
-  const norm = (s) => toJSExpr(String(s)).replace(/\s+/g, '').toLowerCase();
+  const norm = (s) => toJSExpr(normalizePrettyMathText(String(s))).replace(/\s+/g, '').toLowerCase();
   return norm(user) === norm(target);
 }
-
 
 // ---- One true normalizer → JS-safe expression -----------------
 
@@ -693,7 +722,7 @@ function answersMatch(userInput, expected) {
 // numeric evaluator using the normalizer
 function tryNumeric(value) {
   if (value == null) return null;
-  const js = normalizeToJS(value);
+  const js = normalizeToJS(normalizePrettyMathText(value));
   try {
     const out = Function(`"use strict"; return (${js})`)();
     return (typeof out === "number" && isFinite(out)) ? out : null;
@@ -708,7 +737,7 @@ function toJSExpr(expr) {
 }
 
 function evalExprAtX(expr, x) {
-  const js = normalizeToJS(expr);
+  const js = normalizeToJS(normalizePrettyMathText(expr));
   const fn = new Function("x", `with (Math) { return (${js}); }`);
   return fn(x);
 }
@@ -2137,8 +2166,8 @@ x₁ = ½(x₀ + ${n}/x₀) ≈ ${x1str}
 Rounded to 2 d.p., √${n} ≈ ${answer}.`;
 
   // KaTeX prompt (your renderer shows this under the title)
-  const prompt = "Estimate to 1 d.p.";
-  const promptLatex = `\\sqrt{${n}}`;
+  const prompt = "Estimate to 2 d.p.";
+  const promptLatex = `\( \sqrt{${n}} \)`;
 
   // Checker: accept numbers that round to the same 2 d.p.
   // Tolerance: within 0.005 of the true value, i.e., correct nearest rounding.
@@ -4524,7 +4553,7 @@ function RenderPrompt({ prompt, promptLatex }) {
   }
   const suggestedSymbols = useMemo(() => {
     const p = String(current?.prompt ?? "").toLowerCase();
-    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷", "λ", "x"];
+    const base = ["√", "π", "^", "²", "³", "(", ")", "×", "÷", "λ"];
     const need = new Set(base);
     if (p.includes("π") || p.includes("pi")) need.add("π");
     if (p.includes("^") || p.includes("power") || p.includes("²") || p.includes("³")) need.add("^");
