@@ -303,17 +303,28 @@ const btnPrimaryLite = `${buttonBase} bg-emerald-500/80 hover:bg-emerald-500 tex
 const btnSoft = `${buttonBase} bg-white/5 hover:bg-white/10 text-white border border-white/10 shadow-none`;
 // ---------- Data ----------
 const CATEGORIES = {
+  CRAM:[    
+    { id: "mental_add_fast", label: "Addition Fast" },
+    { id: "mental_sub_fast", label: "Subtraction Fast" },
+    { id: "mental_decimal_mul", label: "Decimal × Digit" },
+    { id: "mental_div", label: "Division" },
+    { id: "mul_of_5", label: "Multiples of 5" },
+    { id: "diff_speed", label: "Differentiate" },
+    { id: "integrate_speed", label: "Integrate" },
+    { id: "friendly_frac_decimals", label: "Friendly Fraction <-> Decimal" },
+    { id: "simplify_fraction", label: "Simplifying fractions" },
+    { id: "binomial_expand", label: "Binomial Expansion" },
+    { id: "tri_special", label: "Special Triangles" },
+    { id: "trig_inverse_recall", label: "Inverse Trig Ratios " },
+    { id: "trig_recall_basic", label: "Basic Trig Ratios" },
+  ],
   CALCULATION: [
     { id: "mental_add", label: "Addition" },
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
-    { id: "mental_add_fast", label: "Addition Fast" },
-    { id: "mental_sub_fast", label: "Subtraction Fast" },
     { id: "mental_mul_fast", label: "Multiplication Fast" },
-    { id: "mental_decimal_mul", label: "Decimal × Digit" },
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "mul_focus_multiples", label: "Multiplication (2 Digit)" },
-    { id: "mental_div", label: "Division" },
     { id: "squares", label: "Squares" },
     { id: "cubes", label: "Cubes" },
     { id: "quadratics_eval", label: "Quadratic Functions" },
@@ -355,11 +366,13 @@ const CATEGORIES = {
     { id: "square_pyramid_sa", label: "Square Pyramid SA" },
   ],
   TRIGONOMETRY: [
-    { id: "trig_recall_basic", label: "Basic Trig Ratios" },
+    
     { id: "trig_recall_extended", label: "Advanced Trig Ratios " },
-    { id: "trig_inverse_recall", label: "Inverse Trig Ratios " },
+    
     { id: "trig_eval", label: "Using trig functions" },
     { id: "tri_special", label: "Special Triangles" },
+    { id: "trig_inverse_recall", label: "Inverse Trig Ratios " },
+    { id: "trig_recall_basic", label: "Basic Trig Ratios" },
   ],
   TOOLS: [
     { id: "flash_timer", label: "Flash Timer (special)" },
