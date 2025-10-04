@@ -310,7 +310,7 @@ const CATEGORIES = {
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "diff_speed", label: "Differentiate" },
     { id: "integrate_speed", label: "Integrate" },
-    { id: "friendly_frac_decimals", label: "Friendly Fraction <-> Decimal" },
+    { id: "friendly_frac_decimals", label: "Frac to Dec Fast" },
     { id: "simplify_fraction", label: "Simplifying fractions" },
     { id: "binomial_expand", label: "Binomial Expansion" },
     { id: "tri_special", label: "Special Triangles" },
