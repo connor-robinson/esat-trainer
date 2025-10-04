@@ -1,4 +1,4 @@
-import 'katex/dist/katex.min.css';
+﻿import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./hooks/useAuth";
@@ -307,6 +307,9 @@ const CATEGORIES = {
     { id: "mental_add", label: "Addition" },
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
+    { id: "mental_add_fast", label: "Addition Fast" },
+    { id: "mental_sub_fast", label: "Subtraction Fast" },
+    { id: "mental_mul_fast", label: "Multiplication Fast" },
     { id: "mental_decimal_mul", label: "Decimal × Digit" },
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "mul_focus_multiples", label: "Multiplication (2 Digit)" },
@@ -1150,6 +1153,21 @@ function isTerminatingDenom(q) {
   return x === 1;
 }
 
+function pickWeighted(items) {
+  const sum = items.reduce((s, it) => s + it.w, 0);
+  let r = Math.random() * sum;
+  for (const it of items) { r -= it.w; if (r <= 0) return it.value; }
+  return items[items.length - 1].value;
+}
+
+function randDigit(weights) {
+  const vals = [2,3,4,5,6,7,8,9];
+  if (!weights) return vals[randInt(0, vals.length - 1)];
+  const weighted = vals.map((v, i) => ({ value: v, w: weights[i] || 1 }));
+  return pickWeighted(weighted);
+}
+
+
 // ---------- Question generators ----------
 function genQuestion(topic) {
   switch (topic) {
@@ -1240,6 +1258,63 @@ function genQuestion(topic) {
         checker,
       };
     }
+    // ---- fast addition ----
+case "mental_add_fast": {
+  const pattern = pickWeighted([
+    { value: "dd+sd",    w: 55 },
+    { value: "sd+sd",    w: 35 },
+    { value: "dd+sd+sd", w: 10 },
+  ]);
+
+  if (pattern === "dd+sd") {
+    const a = randInt(10, 99);
+    const b = randDigit();
+    return { prompt: `${a} + ${b}`, answer: String(a + b) };
+  }
+
+  if (pattern === "sd+sd") {
+    const d1 = randDigit([1,1,1,2,3,4,5,5]);
+    const d2 = randDigit([1,1,1,2,3,4,5,5]);
+    return { prompt: `${d1} + ${d2}`, answer: String(d1 + d2) };
+  }
+
+  const a = randInt(10, 99);
+  const b = randDigit();
+  const c = randDigit();
+  return { prompt: `${a} + ${b} + ${c}`, answer: String(a + b + c) };
+}
+// ---- fast subtraction ----
+case "mental_sub_fast": {
+  const pattern = pickWeighted([
+    { value: "dd-sd", w: 60 },
+    { value: "sd-sd", w: 25 },
+    { value: "sd-dd", w: 15 },
+  ]);
+
+  if (pattern === "dd-sd") {
+    const a = randInt(10, 99);
+    const b = randDigit();
+    return { prompt: `${a} - ${b}`, answer: String(a - b) };
+  }
+
+  if (pattern === "sd-sd") {
+    const a = randDigit([1,1,1,2,3,4,5,5]);
+    const b = randDigit([1,1,1,2,3,4,5,5]);
+    const x = Math.max(a, b);
+    const y = Math.min(a, b);
+    return { prompt: `${x} - ${y}`, answer: String(x - y) };
+  }
+
+  const a = randDigit();
+  const b = randInt(10, 99);
+  return { prompt: `${a} - ${b}`, answer: String(a - b) };
+}
+// ---- fast multiplication ----
+case "mental_mul_fast": {
+  const d1 = randDigit([1,1,2,3,4,5,6,6]);
+  const d2 = randDigit([1,1,2,3,4,5,6,6]);
+  return { prompt: `${d1} × ${d2}`, answer: String(d1 * d2) };
+}
 
     /* =========================================
        BYTE-SIZED: Integration speed drills
@@ -1404,7 +1479,8 @@ function genQuestion(topic) {
             answer: ans.exact,
             acceptableAnswers: ans.acceptable,
             diagram: {
-              type: "30-60-90",
+              type: "triangle",
+              variant: "30-60-90",
               lengths: { base: numeric.long, vertical: numeric.short },
               labels,
               angleHint,
@@ -1441,7 +1517,8 @@ function genQuestion(topic) {
             answer: String(theta),
             acceptableAnswers: [String(theta), `${theta}°`],
             diagram: {
-              type: "30-60-90",
+              type: "triangle",
+              variant: "30-60-90",
               lengths: { base: numeric.long, vertical: numeric.short },
               labels,
               angleHint: null,   // keep only θ marked
@@ -1471,7 +1548,8 @@ function genQuestion(topic) {
             answer: ans.exact,
             acceptableAnswers: ans.acceptable,
             diagram: {
-              type: "45-45-90",
+              type: "triangle",
+              variant: "45-45-90",
               lengths: { base: numeric.leg, vertical: numeric.leg },
               labels,
               angleHint: null,
@@ -1491,7 +1569,8 @@ function genQuestion(topic) {
             answer: "45",
             acceptableAnswers: ["45", "45°"],
             diagram: {
-              type: "45-45-90",
+              type: "triangle",
+              variant: "45-45-90",
               lengths: { base: numeric.leg, vertical: numeric.leg },
               labels,
               angleHint: null,
@@ -3965,42 +4044,79 @@ function RenderPrompt({ prompt, promptLatex }) {
     times.current.push(dt);
     setCorrectCount(c => c + 1);
   }
-  function TriangleDiagram({ type, lengths, labels, angleHint, isoRight, thetaAt }) {
-    // Fixed canvas
+  function TriangleDiagram({ type, lengths, labels, angleHint, isoRight, thetaAt, orientation }) {
     const W = 360, H = 220, MARGIN = 18;
 
     const BASE = Math.max(1e-6, lengths?.base ?? 1);
     const VERT = Math.max(1e-6, lengths?.vertical ?? 1);
+    const angle = Number.isFinite(orientation) ? orientation : 0;
 
-    // Scale to fit with margins
-    const scale = Math.min((W - 2 * MARGIN) / BASE, (H - 2 * MARGIN) / VERT);
-    const basePx = BASE * scale, vertPx = VERT * scale;
+    const rawA = { x: 0, y: 0 };
+    const rawB = { x: BASE, y: 0 };
+    const rawC = { x: 0, y: -VERT };
 
-    // Center the triangle: right angle at A
-    const left = (W - basePx) / 2;
-    const bottom = (H + vertPx) / 2;
-    const A = { x: left, y: bottom };
-    const B = { x: left + basePx, y: bottom };
-    const C = { x: left, y: bottom - vertPx };
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const rotate = (p) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos });
 
-    // Helpers
+    const rotA = rotate(rawA);
+    const rotB = rotate(rawB);
+    const rotC = rotate(rawC);
+
+    const minX = Math.min(rotA.x, rotB.x, rotC.x);
+    const maxX = Math.max(rotA.x, rotB.x, rotC.x);
+    const minY = Math.min(rotA.y, rotB.y, rotC.y);
+    const maxY = Math.max(rotA.y, rotB.y, rotC.y);
+
+    const width = Math.max(1e-6, maxX - minX);
+    const height = Math.max(1e-6, maxY - minY);
+    const scale = Math.min((W - 2 * MARGIN) / width, (H - 2 * MARGIN) / height);
+    const offsetX = (W - width * scale) / 2 - minX * scale;
+    const offsetY = (H - height * scale) / 2 - minY * scale;
+
+    const toScreen = (p) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY });
+
+    const A = toScreen(rotA);
+    const B = toScreen(rotB);
+    const C = toScreen(rotC);
+
     const mid = (P, Q) => ({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 });
     const sub = (p, q) => ({ x: p.x - q.x, y: p.y - q.y });
     const len = (v) => Math.hypot(v.x, v.y) || 1;
-    const norm = (v) => { const L = len(v); return { x: v.x / L, y: v.y / L }; };
+    const norm = (v) => {
+      const L = len(v);
+      return L === 0 ? { x: 0, y: 0 } : { x: v.x / L, y: v.y / L };
+    };
     const perp = (v) => ({ x: -v.y, y: v.x });
 
-    const minSide = Math.min(basePx, vertPx);
-    const r = Math.max(10, Math.min(16, 0.18 * minSide));          // right-angle box
-    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W, H)));  // text size
-    const tickLen = Math.max(8, Math.min(14, 0.14 * minSide));     // equality tick
+    const AB = len(sub(B, A));
+    const AC = len(sub(C, A));
+    const BC = len(sub(C, B));
+    const minSide = Math.max(1e-6, Math.min(AB, AC, BC));
 
-    // Angle label inside on bisector
-    function angleLabelInside(vertexKey, text, color = "#a0aec0") {
+    const r = Math.max(10, Math.min(16, 0.18 * minSide));
+    const fs = Math.max(11, Math.min(14, 0.045 * Math.min(W, H)));
+    const tickLen = Math.max(8, Math.min(14, 0.14 * minSide));
+    const labelOffset = Math.max(12, Math.min(18, 0.2 * minSide));
+
+    const DEG = '°';
+    const THETA = 'θ';
+
+    function angleLabelInside(vertexKey, text, color = '#a0aec0') {
       let V, U1, U2;
-      if (vertexKey === "A") { V = A; U1 = norm(sub(B, A)); U2 = norm(sub(C, A)); }
-      else if (vertexKey === "B") { V = B; U1 = norm(sub(A, B)); U2 = norm(sub(C, B)); }
-      else { V = C; U1 = norm(sub(A, C)); U2 = norm(sub(B, C)); }
+      if (vertexKey === 'A') {
+        V = A;
+        U1 = norm(sub(B, A));
+        U2 = norm(sub(C, A));
+      } else if (vertexKey === 'B') {
+        V = B;
+        U1 = norm(sub(A, B));
+        U2 = norm(sub(C, B));
+      } else {
+        V = C;
+        U1 = norm(sub(A, C));
+        U2 = norm(sub(B, C));
+      }
       let bis = { x: U1.x + U2.x, y: U1.y + U2.y };
       const L = Math.hypot(bis.x, bis.y);
       if (L < 1e-6) {
@@ -4008,7 +4124,8 @@ function RenderPrompt({ prompt, promptLatex }) {
         const v = sub(centroid, V);
         bis = norm(v);
       } else {
-        bis.x /= L; bis.y /= L;
+        bis.x /= L;
+        bis.y /= L;
       }
       const d = Math.max(12, Math.min(22, 0.22 * minSide));
       const P = { x: V.x + bis.x * d, y: V.y + bis.y * d };
@@ -4019,37 +4136,62 @@ function RenderPrompt({ prompt, promptLatex }) {
       );
     }
 
-    // Equality tick on an edge
     function edgeTick(P, Q) {
-      const v = sub(Q, P), u = norm(v), n = norm(perp(u));
-      const m = mid(P, Q), t = tickLen / 2;
+      const v = sub(Q, P);
+      const u = norm(v);
+      const n = norm(perp(u));
+      const m = mid(P, Q);
+      const t = tickLen / 2;
       const a = { x: m.x - n.x * t, y: m.y - n.y * t };
       const b = { x: m.x + n.x * t, y: m.y + n.y * t };
       return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#e5e7eb" strokeWidth="2" />;
     }
 
-    const baseMid = mid(A, B), vertMid = mid(A, C), hypMid = mid(B, C);
+    function edgeLabel(P, Q, opposite, text) {
+      if (!text) return null;
+      const m = mid(P, Q);
+      const dir = norm(sub(Q, P));
+      let n = norm(perp(dir));
+      const towardOpp = sub(opposite, m);
+      if (n.x * towardOpp.x + n.y * towardOpp.y > 0) {
+        n = { x: -n.x, y: -n.y };
+      }
+      const pos = { x: m.x + n.x * labelOffset, y: m.y + n.y * labelOffset };
+      return (
+        <text x={pos.x} y={pos.y} fontSize={fs} textAnchor="middle" dominantBaseline="middle" fill="#e5e7eb">
+          {text}
+        </text>
+      );
+    }
 
     let angleNode = null;
     if (angleHint) {
-      const txt = angleHint.startsWith("30") ? "30°"
-        : angleHint.startsWith("60") ? "60°"
-          : angleHint.startsWith("45") ? "45°"
-            : null;
-      const key = angleHint.slice(-1); // 'A'|'B'|'C'
-      if (txt && /[ABC]/.test(key)) angleNode = angleLabelInside(key, txt, "#9ca3af");
+      const txt = angleHint.startsWith('30') ? `30${DEG}`
+        : angleHint.startsWith('60') ? `60${DEG}`
+        : angleHint.startsWith('45') ? `45${DEG}`
+        : null;
+      const key = angleHint.slice(-1);
+      if (txt && /[ABC]/.test(key)) angleNode = angleLabelInside(key, txt, '#9ca3af');
     }
 
-    // θ marker for angle-finding variant
     let thetaNode = null;
     if (thetaAt && /[ABC]/.test(thetaAt)) {
-      thetaNode = angleLabelInside(thetaAt, "θ", "#f3f4f6");
+      thetaNode = angleLabelInside(thetaAt, THETA, '#f3f4f6');
     }
+
+    const baseLabel = edgeLabel(A, B, C, labels?.base);
+    const verticalLabel = edgeLabel(A, C, B, labels?.vertical);
+    const hypLabel = edgeLabel(B, C, A, labels?.hyp);
+
+    const rightArm = norm(sub(B, A));
+    const upArm = norm(sub(C, A));
+    const rightCorner = { x: A.x + rightArm.x * r, y: A.y + rightArm.y * r };
+    const upCorner = { x: A.x + upArm.x * r, y: A.y + upArm.y * r };
+    const innerCorner = { x: rightCorner.x + upArm.x * r, y: rightCorner.y + upArm.y * r };
 
     return (
       <div className="mt-2 flex justify-center">
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          {/* Triangle */}
           <polygon
             points={`${A.x},${A.y} ${B.x},${B.y} ${C.x},${C.y}`}
             fill="rgba(16,185,129,0.08)"
@@ -4058,16 +4200,14 @@ function RenderPrompt({ prompt, promptLatex }) {
             strokeLinejoin="round"
           />
 
-          {/* Right angle at A */}
           <polyline
-            points={`${A.x},${A.y - r} ${A.x + r},${A.y - r} ${A.x + r},${A.y}`}
+            points={`${rightCorner.x},${rightCorner.y} ${innerCorner.x},${innerCorner.y} ${upCorner.x},${upCorner.y}`}
             fill="none"
             stroke="#93c5fd"
             strokeWidth="2"
             strokeLinejoin="round"
           />
 
-          {/* Equal-leg ticks for 45-45-90 */}
           {isoRight && (
             <>
               {edgeTick(A, B)}
@@ -4075,24 +4215,10 @@ function RenderPrompt({ prompt, promptLatex }) {
             </>
           )}
 
-          {/* Side labels */}
-          {labels?.base && (
-            <text x={baseMid.x} y={A.y + 14} fontSize={fs} textAnchor="middle" fill="#e5e7eb">
-              {labels.base}
-            </text>
-          )}
-          {labels?.vertical && (
-            <text x={A.x - 8} y={vertMid.y} fontSize={fs} textAnchor="end" dominantBaseline="middle" fill="#e5e7eb">
-              {labels.vertical}
-            </text>
-          )}
-          {labels?.hyp && (
-            <text x={hypMid.x + 10} y={hypMid.y - 6} fontSize={fs} textAnchor="start" fill="#e5e7eb">
-              {labels.hyp}
-            </text>
-          )}
+          {baseLabel}
+          {verticalLabel}
+          {hypLabel}
 
-          {/* Angle labels */}
           {angleNode}
           {thetaNode}
         </svg>
@@ -4522,7 +4648,7 @@ function RenderPrompt({ prompt, promptLatex }) {
       autoAdvanceRef.current = setTimeout(() => {
         autoAdvanceRef.current = null;
         advance();
-      }, 350);
+      }, 0);
     } else {
       setState("wrong");
       setLastWasCorrect(false);
@@ -4823,7 +4949,7 @@ function RenderPrompt({ prompt, promptLatex }) {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      transition={{ duration: 0.02, ease: "easeOut" }}
                       className="inline-flex items-center gap-2 text-emerald-400"
                     >
                       <Check size={18} /> Correct
@@ -4836,7 +4962,7 @@ function RenderPrompt({ prompt, promptLatex }) {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.12, ease: "easeOut" }}
+                      transition={{ duration: 0.02, ease: "easeOut" }}
                       className="text-red-400"
                     >
                       Incorrect, try again.
@@ -5270,7 +5396,7 @@ function LeaderboardPanel({ board, setBoard, topicMap, highlightId, maxShown = 5
             exit="exit"
             variants={{
               enter: (d) => ({ x: d === 0 ? 0 : (d > 0 ? 40 : -40), opacity: 0 }),
-              center: { x: 0, opacity: 1, transition: { duration: 0.18, ease: "easeOut" } },
+              center: { x: 0, opacity: 1, transition: { duration: 0.1, ease: "easeOut" } },
               exit: (d) => ({ x: d > 0 ? -40 : 40, opacity: 0, transition: { duration: 0.16, ease: "easeIn" } })
             }}
           >
