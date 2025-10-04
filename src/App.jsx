@@ -1300,9 +1300,9 @@ case "mental_add_fast": {
 // ---- fast subtraction ----
 case "mental_sub_fast": {
   const pattern = pickWeighted([
-    { value: "dd-sd", w: 50 },
-    { value: "sd-sd", w: 10 },
-    { value: "sd-dd", w: 5 },
+    { value: "dd-sd", w: 40 },
+    { value: "sd-sd", w: 20 },
+    { value: "sd-dd", w: 40 },
   ]);
 
   if (pattern === "dd-sd") {
@@ -1312,8 +1312,8 @@ case "mental_sub_fast": {
   }
 
   if (pattern === "sd-sd") {
-    const a = randDigit([1,1,1,2,3,4,5,5]);
-    const b = randDigit([1,1,1,2,3,4,5,5]);
+    const a = randInt(10, 20)
+    const b = randDigit([1,1,1,2,3,4,5,5, ]);
     const x = Math.max(a, b);
     const y = Math.min(a, b);
     return { prompt: `${x} - ${y}`, answer: String(x - y) };
