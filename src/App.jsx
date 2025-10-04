@@ -306,7 +306,6 @@ const CATEGORIES = {
   CRAM:[    
     { id: "mental_add_fast", label: "Addition Fast" },
     { id: "mental_sub_fast", label: "Subtraction Fast" },
-    { id: "mental_decimal_mul", label: "Decimal × Digit" },
     { id: "mental_div", label: "Division" },
     { id: "mul_of_5", label: "Multiples of 5" },
     { id: "diff_speed", label: "Differentiate" },
@@ -319,6 +318,8 @@ const CATEGORIES = {
     { id: "trig_recall_basic", label: "Basic Trig Ratios" },
   ],
   CALCULATION: [
+    { id: "mental_decimal_mul", label: "Decimal × Digit" },
+
     { id: "mental_add", label: "Addition" },
     { id: "mental_sub", label: "Subtraction" },
     { id: "mental_mul", label: "Multiplication" },
@@ -1301,7 +1302,7 @@ case "mental_sub_fast": {
   const pattern = pickWeighted([
     { value: "dd-sd", w: 50 },
     { value: "sd-sd", w: 10 },
-    { value: "sd-dd", w: 35 },
+    { value: "sd-dd", w: 5 },
   ]);
 
   if (pattern === "dd-sd") {
@@ -3712,7 +3713,7 @@ function BuilderView({
                 return (
                   <div
                     key={cat}
-                    className={`space-y-2 ${cat === "CALCULATION" ? "md:col-span-2" : ""}`}
+                    className={`space-y-2 ${cat === "CALCULATION" || cat === "CRAM" ? "md:col-span-2" : ""}`}
                   >
                     <div className="text-xs uppercase tracking-wider text-white/50">{cat}</div>
 
