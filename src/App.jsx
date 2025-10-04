@@ -1299,9 +1299,9 @@ case "mental_add_fast": {
 // ---- fast subtraction ----
 case "mental_sub_fast": {
   const pattern = pickWeighted([
-    { value: "dd-sd", w: 60 },
-    { value: "sd-sd", w: 25 },
-    { value: "sd-dd", w: 15 },
+    { value: "dd-sd", w: 50 },
+    { value: "sd-sd", w: 10 },
+    { value: "sd-dd", w: 35 },
   ]);
 
   if (pattern === "dd-sd") {
